@@ -19,13 +19,12 @@ package io.helidon.microprofile.reactive;
 
 import org.eclipse.microprofile.reactive.streams.operators.tck.ReactiveStreamsTck;
 import org.eclipse.microprofile.reactive.streams.operators.tck.spi.CoupledStageVerification;
-import org.eclipse.microprofile.reactive.streams.operators.tck.spi.FlatMapStageVerification;
 import org.reactivestreams.tck.TestEnvironment;
 
 public class HelidonReactiveStreamsTckTest extends ReactiveStreamsTck<HelidonReactiveStreamEngine> {
 
     public HelidonReactiveStreamsTckTest() {
-        super(new TestEnvironment(200, 200, false));
+        super(new TestEnvironment(100, 100, false));
     }
 
     @Override
@@ -36,9 +35,9 @@ public class HelidonReactiveStreamsTckTest extends ReactiveStreamsTck<HelidonRea
     @Override
     protected boolean isEnabled(Object test) {
         // Remove when TCK test issues are solved
-        // https://github.com/eclipse/microprofile-reactive-streams-operators/issues/133
-        return !(test instanceof FlatMapStageVerification.InnerSubscriberVerification)
-                // https://github.com/eclipse/microprofile-reactive-streams-operators/issues/131
-                && !(test instanceof CoupledStageVerification.ProcessorVerification);
+        // https://github.com/eclipse/microprofile-reactive-streams-operators/issues/131
+//        return !(test instanceof CoupledStageVerification.ProcessorVerification);
+//        return test.getClass().getName().contains("FlatMapStageVerification$OuterProcessorVerification");
+        return test.getClass().getName().contains("FlatMap");
     }
 }

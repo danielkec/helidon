@@ -19,7 +19,6 @@ package io.helidon.common.reactive;
 
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Flow;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
@@ -43,7 +42,6 @@ public class MultiFlatMapProcessor<T, X> implements Flow.Processor<T, X>, Multi<
     private ReentrantLock innerPubSeqLock = new ReentrantLock();
     private volatile Flow.Publisher<X> innerPublisher;
     private AtomicBoolean upstreamsCompleted = new AtomicBoolean(false);
-    private CompletableFuture<Void> innerPublisherCompleted = CompletableFuture.completedFuture(null);
 
 
     private MultiFlatMapProcessor() {
@@ -83,15 +81,16 @@ public class MultiFlatMapProcessor<T, X> implements Flow.Processor<T, X>, Multi<
         @Override
         public void request(long n) {
             requestCounter.increment(n, MultiFlatMapProcessor.this::onError);
-            Optional.ofNullable(innerSubscription)
-                    .orElse(subscription)
-                    .request(n);
+            if (Objects.nonNull(innerSubscription)) {
+                innerSubscription.request(n);
+            } else {
+                subscription.request(1);
+            }
         }
 
         @Override
         public void cancel() {
             subscription.cancel();
-            innerPublisherCompleted.complete(null);
             Optional.ofNullable(innerSubscription).ifPresent(Flow.Subscription::cancel);
             // https://github.com/reactive-streams/reactive-streams-jvm#3.13
             subscriber.releaseReference();
@@ -131,15 +130,8 @@ public class MultiFlatMapProcessor<T, X> implements Flow.Processor<T, X>, Multi<
         try {
             // https://github.com/reactive-streams/reactive-streams-jvm#1.3
             publisherSeqLock.lock();
-            // Have to block till previous pub is complete, see TCK
-            // FlatMapStageVerification.flatMapStageShouldOnlySubscribeToOnePublisherAtATime
-            // and that is the problem why we need the buffer to avoid this blocking
-            innerPublisherCompleted.get();
             innerPublisher = mapper.apply(o);
-            //Block other next till this publisher is done
-            innerPublisherCompleted = new CompletableFuture<>();
             innerPublisher.subscribe(new InnerSubscriber());
-
         } catch (Throwable t) {
             subscription.cancel();
             subscriber.onError(t);
@@ -153,7 +145,6 @@ public class MultiFlatMapProcessor<T, X> implements Flow.Processor<T, X>, Multi<
         try {
             // https://github.com/reactive-streams/reactive-streams-jvm#1.3
             publisherSeqLock.lock();
-            innerPublisherCompleted.completeExceptionally(t);
             this.error = Optional.of(t);
             if (Objects.nonNull(subscriber)) {
                 subscriber.onError(t);
@@ -184,7 +175,6 @@ public class MultiFlatMapProcessor<T, X> implements Flow.Processor<T, X>, Multi<
         @Override
         public void onSubscribe(Flow.Subscription subscription) {
             try {
-                // https://github.com/reactive-streams/reactive-streams-jvm#1.3
                 innerPubSeqLock.lock();
                 if (alreadySubscribed.getAndSet(true)) {
                     subscription.cancel();
@@ -200,7 +190,6 @@ public class MultiFlatMapProcessor<T, X> implements Flow.Processor<T, X>, Multi<
         @Override
         public void onNext(X item) {
             try {
-                // https://github.com/reactive-streams/reactive-streams-jvm#1.3
                 innerPubSeqLock.lock();
                 Objects.requireNonNull(item);
                 if (requestCounter.tryDecrement()) {
@@ -214,10 +203,8 @@ public class MultiFlatMapProcessor<T, X> implements Flow.Processor<T, X>, Multi<
         @Override
         public void onError(Throwable throwable) {
             try {
-                // https://github.com/reactive-streams/reactive-streams-jvm#1.3
                 innerPubSeqLock.lock();
                 Objects.requireNonNull(throwable);
-                // unblock onNext from upstream
                 subscription.cancel();
                 subscriber.onError(throwable);
             } finally {
@@ -228,16 +215,14 @@ public class MultiFlatMapProcessor<T, X> implements Flow.Processor<T, X>, Multi<
         @Override
         public void onComplete() {
             try {
-                // https://github.com/reactive-streams/reactive-streams-jvm#1.3
                 innerPubSeqLock.lock();
                 innerPublisher = null;
                 // unblock onNext from upstream
-                innerPublisherCompleted.complete(null);
                 if (upstreamsCompleted.get()) {
                     subscriber.onComplete();
                 }
                 if (requestCounter.get() > 0) {
-                    subscription.request(requestCounter.get());
+                    subscription.request(1);
                 }
             } finally {
                 innerPubSeqLock.unlock();

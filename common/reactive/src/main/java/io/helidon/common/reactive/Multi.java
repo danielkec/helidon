@@ -117,9 +117,7 @@ public interface Multi<T> extends Subscribable<T> {
      * @return Multi
      */
     default Multi<T> limit(long limit) {
-        MultiLimitProcessor<T> processor = MultiLimitProcessor.create(limit);
-        this.subscribe(processor);
-        return processor;
+        return new MultiLimitPublisher<>(this, limit);
     }
 
     /**

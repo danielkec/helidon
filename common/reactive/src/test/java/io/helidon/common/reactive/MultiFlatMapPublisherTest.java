@@ -18,7 +18,7 @@ package io.helidon.common.reactive;
 
 import org.testng.annotations.Test;
 
-import java.util.Arrays;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.IntStream;
 
@@ -233,5 +233,37 @@ public class MultiFlatMapPublisherTest {
     @Test
     public void crossMapUnbounded1000000() {
         crossMapUnbounded(1_000_000);
+    }
+
+    @Test
+    public void justJust() {
+        TestSubscriber<Integer> ts = new TestSubscriber<>();
+        Multi.just(1)
+                .flatMap(Single::just)
+                .subscribe(ts);
+
+        ts.request1();
+
+        assertEquals(ts.getItems(), Collections.singletonList(1));
+        assertThat(ts.getLastError(), is(nullValue()));
+        assertThat(ts.isComplete(), is(true));
+    }
+
+    @Test
+    public void justJustUnbounded() {
+        TestSubscriber<Integer> ts = new TestSubscriber<>() {
+            @Override
+            public void onSubscribe(Flow.Subscription subscription) {
+                super.onSubscribe(subscription);
+                subscription.request(Long.MAX_VALUE);
+            }
+        };
+        Multi.just(1)
+                .flatMap(Single::just)
+                .subscribe(ts);
+
+        assertEquals(ts.getItems(), Collections.singletonList(1));
+        assertThat(ts.getLastError(), is(nullValue()));
+        assertThat(ts.isComplete(), is(true));
     }
 }

@@ -22,9 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Flow;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.*;
 import java.util.function.Function;
 
 /**
@@ -85,11 +83,9 @@ final class MultiFlatMapPublisher<T, R> implements Multi<R> {
 
         private final ConcurrentMap<InnerSubscriber<R>, Object> subscribers;
 
-        private final AtomicReference<Queue<Node<R>>> queue;
+        private final AtomicReference<Queue<InnerSubscriber<R>>> queue;
 
         private final AtomicLong requested;
-
-        private final AtomicLong innerCompleted;
 
         private long emitted;
 
@@ -107,7 +103,6 @@ final class MultiFlatMapPublisher<T, R> implements Multi<R> {
             this.subscribers = new ConcurrentHashMap<>();
             this.queue = new AtomicReference<>();
             this.requested = new AtomicLong();
-            this.innerCompleted = new AtomicLong();
         }
 
         @Override
@@ -218,7 +213,7 @@ final class MultiFlatMapPublisher<T, R> implements Multi<R> {
                 long e = emitted;
                 // is the downstream ready to receive an item
                 if (r != e) {
-                    Queue<Node<R>> q = queue.get();
+                    Queue<InnerSubscriber<R>> q = queue.get();
                     // are there prior items queued up?
                     if (q == null || q.isEmpty()) {
                         emitted = e + 1;
@@ -231,15 +226,17 @@ final class MultiFlatMapPublisher<T, R> implements Multi<R> {
                     }
                 } else {
                     // downstream is not ready, queue up the work
-                    getOrCreateQueue().offer(new Node<>(item, sender));
+                    sender.enqueue(item);
+                    getOrCreateQueue().offer(sender);
                 }
                 // is there more work to be done?
                 if (decrementAndGet() == 0) {
                     return;
                 }
             } else {
+                sender.enqueue(item);
                 // queue up the item
-                getOrCreateQueue().offer(new Node<>(item, sender));
+                getOrCreateQueue().offer(sender);
                 // can we enter the drain loop?
                 if (getAndIncrement() != 0) {
                     return;
@@ -249,27 +246,63 @@ final class MultiFlatMapPublisher<T, R> implements Multi<R> {
         }
 
         public void innerError(Throwable ex, InnerSubscriber<R> sender) {
-            subscribers.remove(sender);
             if (delayErrors) {
                 addError(ex);
-                innerCompleted.getAndIncrement();
+                sender.setDone();
             } else {
                 errors.compareAndSet(null, ex);
                 upstream.cancel();
                 cancelInners();
+                sender.setDone();
                 upstreamDone = true;
             }
+            getOrCreateQueue().offer(sender);
             drain();
         }
 
         public void innerComplete(InnerSubscriber<R> sender) {
-            innerCompleted.getAndIncrement();
-            subscribers.remove(sender);
-            drain();
+            sender.setDone();
+            if (get() == 0 && compareAndSet(0, 1)) {
+
+                Queue<R> innerQueue = sender.getQueue();
+                if (innerQueue == null || innerQueue.isEmpty()) {
+                    subscribers.remove(sender);
+
+                    boolean done = upstreamDone;
+                    Queue<InnerSubscriber<R>> mainQueue = queue.get();
+                    boolean mainQueueEmpty = mainQueue == null || mainQueue.isEmpty();
+                    boolean noMoreSubscribers = subscribers.isEmpty();
+
+                    if (done && mainQueueEmpty && noMoreSubscribers) {
+                        Throwable ex = errors.get();
+                        if (ex == null) {
+                            downstream.onComplete();
+                        } else {
+                            downstream.onError(ex);
+                        }
+                        canceled = true;
+                    } else {
+                        if (!done) {
+                            upstream.request(1L);
+                        }
+                    }
+                } else {
+                    getOrCreateQueue().offer(sender);
+                }
+                if (decrementAndGet() == 0) {
+                    return;
+                }
+            } else {
+                getOrCreateQueue().offer(sender);
+                if (getAndIncrement() != 0) {
+                    return;
+                }
+            }
+            drainLoop();
         }
 
-        Queue<Node<R>> getOrCreateQueue() {
-            Queue<Node<R>> q = queue.get();
+        Queue<InnerSubscriber<R>> getOrCreateQueue() {
+            Queue<InnerSubscriber<R>> q = queue.get();
             if (q == null) {
                 q = new ConcurrentLinkedQueue<>();
                 if (!queue.compareAndSet(null, q)) {
@@ -314,7 +347,7 @@ final class MultiFlatMapPublisher<T, R> implements Multi<R> {
             long e = emitted;
 
             Flow.Subscriber<? super R> downstream = this.downstream;
-            AtomicReference<Queue<Node<R>>> queue = this.queue;
+            AtomicReference<Queue<InnerSubscriber<R>>> queue = this.queue;
             ConcurrentMap<?, ?> subscribers = this.subscribers;
 
             for (;;) {
@@ -334,7 +367,7 @@ final class MultiFlatMapPublisher<T, R> implements Multi<R> {
 
                     boolean done = upstreamDone;
                     boolean noActiveInnerSubscribers = subscribers.isEmpty();
-                    Queue<Node<R>> q = queue.get();
+                    Queue<InnerSubscriber<R>> q = queue.get();
                     boolean noQueuedItems = q == null || q.isEmpty();
 
                     if (done && noActiveInnerSubscribers && noQueuedItems) {
@@ -348,22 +381,33 @@ final class MultiFlatMapPublisher<T, R> implements Multi<R> {
                         continue;
                     }
 
-                    if (!noQueuedItems && e != r) {
-                        Node<R> node = q.poll();
+                    if (!noQueuedItems) {
+                        InnerSubscriber<R> inner = q.peek();
 
-                        e++;
-                        downstream.onNext(node.getItem());
-                        node.getSender().produced(1);
-                        continue;
+                        boolean innerDone = inner.isDone();
+                        Queue<R> innerQueue = inner.getQueue();
+                        boolean innerEmpty = innerQueue == null || innerQueue.isEmpty();
+
+                        if (innerDone && innerEmpty) {
+                            subscribers.remove(inner);
+                            q.poll();
+                            upstream.request(1L);
+                            continue;
+                        }
+
+                        if (!innerEmpty) {
+                            if (r != e) {
+                                q.poll();
+                                R v = innerQueue.poll();
+                                e++;
+                                downstream.onNext(v);
+                                inner.produced(1L);
+                                continue;
+                            }
+                        }
+
+                        emitted = e;
                     }
-
-                    if (innerCompleted.get() != 0L) {
-                        long n = innerCompleted.getAndSet(0L);
-                        upstream.request(n);
-                        continue;
-                    }
-
-                    emitted = e;
                 }
 
                 missed = addAndGet(-missed);
@@ -371,31 +415,6 @@ final class MultiFlatMapPublisher<T, R> implements Multi<R> {
                     break;
                 }
                 r = requested.get();
-            }
-        }
-
-        /**
-         * If there is a contention on signal emission, this record
-         * will hold the item and the sender of the item.
-         * We need the sender so that when an item has been emitted
-         * the replenishment can happen on that specific source.
-         * @param <R> the item type
-         */
-        static final class Node<R> {
-            private final R item;
-            private final InnerSubscriber<R> sender;
-
-            Node(R item, InnerSubscriber<R> sender) {
-                this.item = item;
-                this.sender = sender;
-            }
-
-            public R getItem() {
-                return item;
-            }
-
-            public InnerSubscriber<R> getSender() {
-                return sender;
             }
         }
 
@@ -416,6 +435,10 @@ final class MultiFlatMapPublisher<T, R> implements Multi<R> {
 
             private long produced;
 
+            private volatile boolean done;
+
+            private volatile Queue<R> queue;
+
             InnerSubscriber(FlatMapSubscriber<?, R> parent, long prefetch) {
                 this.parent = parent;
                 this.prefetch = prefetch;
@@ -426,12 +449,12 @@ final class MultiFlatMapPublisher<T, R> implements Multi<R> {
             public void onSubscribe(Flow.Subscription subscription) {
                 Objects.requireNonNull(subscription, "subscription is null");
                 for (;;) {
-                    Flow.Subscription upstream = get();
-                    if (upstream == this) {
+                    Flow.Subscription current = get();
+                    if (current == this) {
                         subscription.cancel();
                         return;
                     }
-                    if (upstream != null) {
+                    if (current != null) {
                         subscription.cancel();
                         throw new IllegalStateException("Subscription already set!");
                     }
@@ -480,6 +503,37 @@ final class MultiFlatMapPublisher<T, R> implements Multi<R> {
                 if (s != null && s != this) {
                     s.cancel();
                 }
+            }
+
+            public Queue<R> getQueue() {
+                return queue;
+            }
+
+            public void enqueue(R item) {
+                Queue<R> q = queue;
+                if (q == null) {
+                    q = new ConcurrentLinkedQueue<>();
+                    queue = q;
+                }
+                q.offer(item);
+            }
+
+            public void setDone() {
+                done = true;
+            }
+
+            public boolean isDone() {
+                return done;
+            }
+
+            @Override
+            public String toString() {
+                boolean d = done;
+                Queue<R> q = queue;
+                return "InnerSubscriber{" +
+                        "done=" + d +
+                        ", queue=" + (q != null ? q.size() : "null") +
+                        '}';
             }
         }
     }

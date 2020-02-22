@@ -141,10 +141,24 @@ public interface Multi<T> extends Subscribable<T> {
      * @param <U>             output item type
      * @return Multi
      */
-    default <U> Multi<U> flatMap(Function<T, Flow.Publisher<U>> publisherMapper) {
-        MultiFlatMapProcessor<T, U> processor = MultiFlatMapProcessor.fromPublisherMapper(publisherMapper);
-        this.subscribe(processor);
-        return processor;
+    default <U> Multi<U> flatMap(Function<? super T, ? extends Flow.Publisher<? extends U>> publisherMapper) {
+        return this.flatMap(publisherMapper, 32, false, 32);
+    }
+
+    /**
+     * Transform each upstream item with the supplied function and flatten the
+     * resulting {@link Flow.Publisher} into a single sequence.
+     * @param mapper {@link Function} receiving item as parameter and returning {@link Flow.Publisher}
+     * @param maxConcurrency the maximum number of active inner sequences
+     * @param delayErrors if true, delays from the upstream and any inner sequence is delayed until all
+     *                    of them terminate
+     * @param prefetch the number of items to request from each inner sequences
+     * @param <U> the element type of the inner {@link Flow.Publisher}s and the output sequence
+     * @return Multi
+     */
+    default <U> Multi<U> flatMap(Function<? super T, ? extends Flow.Publisher<? extends U>> mapper,
+                                 long maxConcurrency, boolean delayErrors, long prefetch) {
+        return new MultiFlatMapPublisher<>(this, mapper, maxConcurrency, prefetch, delayErrors);
     }
 
     /**

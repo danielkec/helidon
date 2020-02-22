@@ -65,9 +65,7 @@ public interface Multi<T> extends Subscribable<T> {
      * @return Multi
      */
     default Multi<T> distinct() {
-        MultiDistinctProcessor<T> processor = MultiDistinctProcessor.create();
-        this.subscribe(processor);
-        return processor;
+        return new MultiDistinctPublisher<>(this, v -> v);
     }
 
     /**

@@ -62,10 +62,11 @@ import org.reactivestreams.Subscriber;
  */
 final class GraphBuilder extends HashMap<Class<? extends Stage>, Consumer<Stage>> {
 
-    private Multi<Object> multi = null;
-    private List<Flow.Processor<Object, Object>> processorList = new ArrayList<>();
-    private CompletionStage<Object> completionStage = null;
-    private SubscriberWithCompletionStage<Object, Object> subscriberWithCompletionStage = null;
+    private static final long serialVersionUID = 9127275427082594265L;
+    private transient Multi<Object> multi = null;
+    private transient List<Flow.Processor<Object, Object>> processorList = new ArrayList<>();
+    private transient CompletionStage<Object> completionStage = null;
+    private transient SubscriberWithCompletionStage<Object, Object> subscriberWithCompletionStage = null;
 
     @SuppressWarnings("unchecked")
     private GraphBuilder() {

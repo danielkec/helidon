@@ -843,9 +843,13 @@ public interface Multi<T> extends Subscribable<T> {
      *
      * @param consumer consumer to be invoked for each item
      */
-    default void forEach(Consumer<? super T> consumer) {
-        FunctionalSubscriber<T> subscriber = new FunctionalSubscriber<>(consumer, null, null, null);
+    default MultiCompletionStage forEach(Consumer<? super T> consumer) {
+        MultiCompletionStage.MultiCompletableFuture future = MultiCompletionStage.createFuture();
+        FunctionalSubscriber<T> subscriber = new FunctionalSubscriber<>(consumer,
+                future::completeExceptionally,
+                () -> future.complete(null), null);
         this.subscribe(subscriber);
+        return future;
     }
 
 }

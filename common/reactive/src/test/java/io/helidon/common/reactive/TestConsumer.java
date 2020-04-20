@@ -28,4 +28,8 @@ class TestConsumer<T> implements Consumer<T> {
     public void accept(T t) {
         item = t;
     }
+
+    static <T> Consumer<T> noop(){
+        return t -> {};
+    }
 }

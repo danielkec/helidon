@@ -557,6 +557,7 @@ public interface Single<T> extends Subscribable<T> {
      *
      * @throws java.util.concurrent.CancellationException if the computation was cancelled
      * @throws CompletionException                        if this future completed
+     * @return T
      */
     default T await() {
         return this.toStage().toCompletableFuture().join();

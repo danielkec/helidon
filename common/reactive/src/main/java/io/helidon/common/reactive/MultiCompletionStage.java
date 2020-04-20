@@ -29,6 +29,11 @@ import java.util.concurrent.TimeoutException;
  */
 public interface MultiCompletionStage extends CompletionStage<Void> {
 
+    /**
+     * Create new MultiCompletableFuture.
+     *
+     * @return MultiCompletableFuture
+     */
     static MultiCompletableFuture createFuture() {
         return new MultiCompletableFuture();
     }
@@ -48,7 +53,6 @@ public interface MultiCompletionStage extends CompletionStage<Void> {
      *
      * @param timeout the maximum time to wait
      * @param unit    the time unit of the timeout argument
-     * @return the result value
      * @throws java.util.concurrent.CancellationException if this future was cancelled
      * @throws CompletionException                        if this future completed exceptionally,
      *                                                    was interrupted while waiting or the wait timed out

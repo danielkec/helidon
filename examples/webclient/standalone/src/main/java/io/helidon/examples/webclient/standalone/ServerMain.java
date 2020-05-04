@@ -81,7 +81,7 @@ public final class ServerMain {
 
         start.thenAccept(ws -> {
             serverPort = ws.port();
-            System.out.println("WEB server is up! http://localhost:" + ws.port() + "/greet");
+            System.out.println("WEB server is up! http://localhost:" + ws.port() + "/greet/test");
             ws.whenShutdown().thenRun(() -> System.out.println("WEB server is DOWN. Good bye!"));
         }).exceptionally(t -> {
             System.err.println("Startup failed: " + t.getMessage());

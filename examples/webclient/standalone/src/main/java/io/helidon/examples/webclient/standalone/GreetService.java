@@ -71,6 +71,7 @@ public class GreetService implements Service {
         rules
                 .get("/", this::getDefaultMessageHandler)
                 .get("/redirect", this::redirect)
+                .get("/test", this::getTest)
                 .get("/{name}", this::getMessageHandler)
                 .put("/greeting", this::updateGreetingHandler);
     }
@@ -108,6 +109,22 @@ public class GreetService implements Service {
                                    ServerResponse response) {
         String name = request.path().param("name");
         sendResponse(response, name);
+    }
+
+    private void getTest(ServerRequest request,
+                         ServerResponse response) {
+        try {
+            ClientMain.run(new String[] {String.valueOf(ServerMain.getServerPort())})
+                    .whenComplete((aVoid, throwable) -> {
+                        if (throwable == null) {
+                            response.send("OK");
+                        } else {
+                            response.send(throwable);
+                        }
+                    });
+        } catch (Exception e) {
+            response.send(e);
+        }
     }
 
     /**

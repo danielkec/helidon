@@ -77,7 +77,7 @@ public class ClientMain {
      * @throws InterruptedException interrupted exception
      * @throws IOException          io exception
      */
-    public static void main(String[] args) throws ExecutionException, InterruptedException, IOException {
+    public static CompletionStage<Void> run(String[] args) throws ExecutionException, InterruptedException, IOException {
         Config config = Config.create();
         String url;
         if (args.length == 0) {
@@ -102,15 +102,14 @@ public class ClientMain {
                                       .build())
                 .build();
 
-        performPutMethod(webClient)
+        return performPutMethod(webClient)
                 .thenCompose(it -> performGetMethod(webClient))
                 .thenCompose(it -> followRedirects(webClient))
                 .thenCompose(it -> getResponseAsAnJsonObject(webClient))
                 .thenCompose(it -> saveResponseToFile(webClient))
                 .thenCompose(it -> clientMetricsExample(url, config))
                 //Now we need to wait until all requests are done.
-                .toCompletableFuture()
-                .get();
+                .toCompletableFuture();
     }
 
     static CompletionStage<Void> performPutMethod(WebClient webClient) {

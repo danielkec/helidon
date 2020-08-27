@@ -41,6 +41,9 @@ import org.eclipse.microprofile.reactive.messaging.Message;
  */
 public interface JmsMessage<T> extends Message<T> {
 
+    /**
+     * The logger.
+     */
     Logger LOGGER = Logger.getLogger(JmsMessage.class.getName());
 
     /**

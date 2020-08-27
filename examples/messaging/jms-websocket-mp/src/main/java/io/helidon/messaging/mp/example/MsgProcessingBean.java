@@ -20,14 +20,11 @@ package io.helidon.messaging.mp.example;
 import java.util.concurrent.SubmissionPublisher;
 
 import javax.enterprise.context.ApplicationScoped;
-import javax.enterprise.inject.Produces;
-import javax.jms.ConnectionFactory;
 import javax.jms.JMSException;
 
 import io.helidon.common.reactive.Multi;
 import io.helidon.messaging.connectors.jms.JmsMessage;
 
-import org.apache.activemq.ActiveMQConnectionFactory;
 import org.eclipse.microprofile.reactive.messaging.Incoming;
 import org.eclipse.microprofile.reactive.messaging.Message;
 import org.eclipse.microprofile.reactive.messaging.Outgoing;
@@ -94,7 +91,8 @@ public class MsgProcessingBean {
     public void broadcast(JmsMessage<String> msg) {
         // Broadcast to all subscribers
         try {
-            broadCaster.submit("Msg " + msg.getPayload() + " with client id  "+ msg.getSessionMetadata().getConnection().getClientID());
+            broadCaster.submit("Msg " + msg.getPayload() + " with client id  "
+                    + msg.getSessionMetadata().getConnection().getClientID());
         } catch (JMSException e) {
             e.printStackTrace();
         }
@@ -104,7 +102,8 @@ public class MsgProcessingBean {
     public void sameSession(JmsMessage<String> msg) {
         // Broadcast to all subscribers
         try {
-            broadCaster.submit("Msg " + msg.getPayload() + " with client id  "+ msg.getSessionMetadata().getConnection().getClientID());
+            broadCaster.submit("Msg " + msg.getPayload() + " with client id  "
+                    + msg.getSessionMetadata().getConnection().getClientID());
         } catch (JMSException e) {
             e.printStackTrace();
         }

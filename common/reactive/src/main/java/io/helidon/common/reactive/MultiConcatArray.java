@@ -94,7 +94,8 @@ final class MultiConcatArray<T> implements Multi<T> {
             produced++; // assert: matching request(1) has been done by nextSource()
             this.subscription = subscription;
             // assert: requested == SEE_OTHER
-            REQUESTED.setOpaque(this, p0); // assert: p0 is guaranteed to be a value of requested never seen before
+            long oldProduced = produced;
+            REQUESTED.setVolatile(this, p0); // assert: p0 is guaranteed to be a value of requested never seen before
                                    //    or is a terminal value (when concurrent good requests do not matter)
             long p = (long) PENDING.getAndSet(this, SEE_OTHER);
 
@@ -103,13 +104,13 @@ final class MultiConcatArray<T> implements Multi<T> {
                return;
             }
 
-            if (p == produced) {
+            if (p == oldProduced) {
                return;
             }
 
             // assert: p > produced, unless p == BAD - there were request() between nextSource()
             //   and this onSubscribe(); invoke request() on their behalf
-            long req = unconsumed(p, produced);
+            long req = unconsumed(p, oldProduced);
             if (req < 0) {
                 updateRequest(req);
             } else if (p != p0) {

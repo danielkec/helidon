@@ -37,7 +37,7 @@ public class MultiConcatArrayTest {
 
     @BeforeAll
     static void beforeAll() {
-        exec = Executors.newCachedThreadPool();
+        exec = Executors.newFixedThreadPool(2);
     }
 
     @AfterAll
@@ -93,32 +93,33 @@ public class MultiConcatArrayTest {
         ts.assertItemCount(100);
     }
 
-    private static void race(Runnable r1, Runnable r2, ExecutorService exec) {
-
+    static void race(Runnable r1, Runnable r2, ExecutorService exec) {
         AtomicInteger sync = new AtomicInteger(2);
-        CountDownLatch cdl = new CountDownLatch(1);
-
+        CountDownLatch cdl = new CountDownLatch(2);
         exec.submit(() -> {
             if (sync.decrementAndGet() != 0) {
                 while (sync.get() != 0) ;
             }
-
             try {
                 r1.run();
             } finally {
                 cdl.countDown();
             }
         });
-
-        if (sync.decrementAndGet() != 0) {
-            while (sync.get() != 0) ;
-        }
-        r2.run();
-
+        exec.submit(() -> {
+            if (sync.decrementAndGet() != 0) {
+                while (sync.get() != 0) ;
+            }
+            try {
+                r2.run();
+            } finally {
+                cdl.countDown();
+            }
+        });
         try {
-            Assert.assertTrue(cdl.await(50, TimeUnit.SECONDS));
+            cdl.await(5, TimeUnit.SECONDS);
         } catch (InterruptedException ex) {
-            Assert.fail("Race test got interrupted", ex);
+            throw new RuntimeException("timeout!");
         }
     }
 }

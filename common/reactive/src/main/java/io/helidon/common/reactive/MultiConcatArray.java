@@ -149,7 +149,7 @@ final class MultiConcatArray<T> implements Multi<T> {
             do {
                redo = false;
                // assert: pending == SEE_OTHER
-               PENDING.setOpaque(this, produced);
+               PENDING.setVolatile(this, produced);
                long r = (long) REQUESTED.getAndSet(this, SEE_OTHER);
                subscription = null;
 

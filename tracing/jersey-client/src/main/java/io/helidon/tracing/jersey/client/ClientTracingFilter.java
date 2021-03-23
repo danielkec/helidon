@@ -413,4 +413,43 @@ public class ClientTracingFilter implements ClientRequestFilter, ClientResponseF
         return uri.getScheme() + "://" + host + ":" + uri.getPort() + uri.getPath() + query;
     }
 
+    @jdk.jfr.Name(JaxRsInvocationEvent.NAME)
+    @jdk.jfr.Label("JAX-RS Invocation")
+    @jdk.jfr.Category("JAX-RS")
+    @jdk.jfr.Description("Invocation of a JAX-RS resource method")
+    @jdk.jfr.StackTrace(false)
+    public static class JaxRsInvocationEvent extends jdk.jfr.Event {
+
+        public static final String NAME = "HELIDON_JAX_RS";
+
+        @jdk.jfr.Label("Resource Method")
+        public String method;
+
+        @jdk.jfr.Label("Media Type")
+        public String mediaType;
+
+        @jdk.jfr.Label("Java Method")
+        public String javaMethod;
+
+        @jdk.jfr.Label("Path")
+        public String path;
+
+        @jdk.jfr.Label("Length")
+        public int length;
+
+        @jdk.jfr.Label("Query parameters")
+        public String queryParameters;
+
+        @jdk.jfr.Label("Headers")
+        public String headers;
+
+        @jdk.jfr.Label("Response length")
+        public int responseLength;
+
+        @jdk.jfr.Label("Response headers")
+        public String responseHeaders;
+        
+        @jdk.jfr.Label("status")
+        public int status;
+    }
 }

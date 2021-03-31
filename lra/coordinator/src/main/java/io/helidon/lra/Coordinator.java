@@ -53,7 +53,7 @@ public class Coordinator implements Runnable {
     private boolean isTimeoutThreadRunning;
 
     Map<String, LRA> lraMap = new ConcurrentHashMap();
-    static String coordinatorURL = "http://127.0.0.1:8080/lra-coordinator/";
+    static String coordinatorURL = "http://127.0.0.1:8090/lra-coordinator/";
 
     public void init(@Observes @Initialized(ApplicationScoped.class) Object init) {
         LOGGER.info("Coordinator init");
@@ -112,7 +112,11 @@ public class Coordinator implements Runnable {
     public Boolean isActiveLRA(
             @Parameter(name = "LraId", description = "The unique identifier of the LRA", required = true)
             @PathParam("LraId") String lraId) throws NotFoundException {
-        return true; //todo
+        LRA lra = lraMap.get(lraId);
+        if (lra == null) {
+            return false;
+        }
+        return true; //todo: definitely not right
     }
 
     @POST
@@ -195,7 +199,7 @@ public class Coordinator implements Runnable {
             for (String lraid : lraMap.keySet()) {
                 log("[cancel] uri:" + lraid + " lraRecordMap.get(lraid):" + lraMap.get(lraid));
             }
-            return Response.serverError().build();
+            return Response.serverError().entity("LRA not found").build();
         }
         lra.terminate(true, true);
         return Response.ok().build();
@@ -261,7 +265,8 @@ public class Coordinator implements Runnable {
                 doRun(lra, uri); //todo add exponential backoff
             }
             try {
-                Thread.sleep(500);
+                Thread.sleep(50);
+                Thread.onSpinWait();
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }

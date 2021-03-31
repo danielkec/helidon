@@ -18,6 +18,12 @@
 
     <dependencies>
         <dependency>
+            <groupId>javax</groupId>
+            <artifactId>javaee-api</artifactId>
+            <version>8.0.1</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
             <groupId>io.helidon.microprofile.tests</groupId>
             <artifactId>helidon-arquillian</artifactId>
             <version>${project.version}</version>
@@ -32,8 +38,53 @@
         <dependency>
             <groupId>org.eclipse.microprofile.lra</groupId>
             <artifactId>microprofile-lra-tck</artifactId>
-<!--            <version>1.0-SNAPSHOT</version>-->
-            <version>1.0-RC2</version>
+            <version>1.1-SNAPSHOT</version>
+<!--            <version>1.0-RC2</version>-->
+        </dependency>
+        <dependency>
+            <groupId>jakarta.ws.rs</groupId>
+            <artifactId>jakarta.ws.rs-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.arquillian.junit</groupId>
+            <artifactId>arquillian-junit-container</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.microprofile.lra</groupId>
+            <artifactId>microprofile-lra-api</artifactId>
+            <version>1.1-SNAPSHOT</version>
+            <scope>compile</scope>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.eclipse.microprofile.lra</groupId>
+            <artifactId>microprofile-lra-tck</artifactId>
+            <!--      <version>${version.microprofile.lra.tck}</version>-->
+            <version>1.1-SNAPSHOT</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.helidon.lra.clients</groupId>
+            <artifactId>helidon-lra-restclient</artifactId>
+            <version>2.3.0-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.shrinkwrap</groupId>
+            <artifactId>shrinkwrap-api</artifactId>
+            <version>1.2.6</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.arquillian.junit</groupId>
+            <artifactId>arquillian-junit-container</artifactId>
+            <version>1.6.0.Final</version>
         </dependency>
     </dependencies>
 
@@ -47,6 +98,9 @@
                     <dependenciesToScan>
                         <dependency>org.eclipse.microprofile.lra:microprofile-lra-tck</dependency>
                     </dependenciesToScan>
+                    <systemPropertyVariables>
+                        <lra.coordinator.url>http://localhost:8090/lra-coordinator</lra.coordinator.url>
+                    </systemPropertyVariables>
                 </configuration>
                 <dependencies>
                     <dependency>

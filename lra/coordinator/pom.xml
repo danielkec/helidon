@@ -38,8 +38,8 @@
         <spotbugs.exclude>${project.basedir}/src/main/spotbugs/exclusions.xml</spotbugs.exclude>
         <docker.image.prefix>docker.io/paulparkinson</docker.image.prefix>
 
-        <version.microprofile.lra.api>1.0-M1</version.microprofile.lra.api>
-        <version.microprofile.lra.tck>1.0-M1</version.microprofile.lra.tck>
+        <version.microprofile.lra.api>1.0-RC2</version.microprofile.lra.api>
+        <version.microprofile.lra.tck>1.0-RC2</version.microprofile.lra.tck>
 
     </properties>
     <build>
@@ -159,7 +159,11 @@
         <dependency>
             <groupId>org.apache.httpcomponents</groupId>
             <artifactId>httpclient</artifactId>
-            <version>4.5.10</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.httpcomponents</groupId>
+            <artifactId>httpcore</artifactId>
+            <version>4.4.13</version>
         </dependency>
         <dependency>
             <groupId>org.glassfish.jersey.media</groupId>

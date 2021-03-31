@@ -21,10 +21,14 @@ import javax.ws.rs.core.Application;
 import java.util.HashSet;
 import java.util.Set;
 
+import io.helidon.microprofile.server.Server;
+
 @ApplicationScoped
 @ApplicationPath("/")
 public class CoordinatorApplication extends Application {
-
+    public static void main(String[] args) {
+        Server.builder().port(8090).build().start();
+    }
     @Override
     public Set<Class<?>> getClasses() {
         Set<Class<?>> s = new HashSet<>();

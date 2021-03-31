@@ -20,7 +20,7 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
 
-package io.narayana.lra.arquillian;
+package io.helidon.microprofile.lra.tck;
 
 import java.lang.annotation.Annotation;
 import java.net.MalformedURLException;
@@ -30,9 +30,15 @@ import org.jboss.arquillian.test.api.ArquillianResource;
 import org.jboss.arquillian.test.spi.enricher.resource.ResourceProvider;
 import org.jboss.logging.Logger;
 
-public class NarayanaLRABaseUrlProvider implements ResourceProvider {
-    private static final Logger log = Logger.getLogger(NarayanaLRABaseUrlProvider.class);
+public class LRABaseUrlProvider implements ResourceProvider {
+    private static final Logger log = Logger.getLogger(LRABaseUrlProvider.class);
 
+    static {
+        System.setProperty("server.host", "localhost");
+        System.setProperty("server.port", "8080");
+        System.setProperty("lra.coordinator.url", "http://localhost:8090/lra-coordinator");
+    }
+    
     @Override
     public Object lookup(ArquillianResource resource, Annotation... qualifiers) {
         log.debugf("base url lookup executed with resource '%s' and qualifiers '%s'", resource, qualifiers);

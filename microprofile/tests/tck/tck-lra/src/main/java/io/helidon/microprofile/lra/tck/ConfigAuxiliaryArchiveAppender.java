@@ -20,9 +20,7 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
 
-package io.narayana.lra.arquillian;
-
-import io.narayana.lra.arquillian.spi.NarayanaLRARecovery;
+package io.helidon.microprofile.lra.tck;
 
 import io.helidon.lra.rest.Current;
 import io.helidon.lra.rest.LRACdiExtension;
@@ -70,9 +68,11 @@ public class ConfigAuxiliaryArchiveAppender implements AuxiliaryArchiveAppender 
 //                    "META-INF/services/javax.ws.rs.client.ClientBuilder");
 
         // adding TCK required SPI implementations
-        archive.addPackage(NarayanaLRARecovery.class.getPackage());
-        archive.addAsResource(new StringAsset("io.narayana.lra.arquillian.spi.NarayanaLRARecovery"),
+        archive.addPackage(HelidonLRARecoveryService.class.getPackage());
+        archive.addAsResource(new StringAsset("io.helidon.microprofile.lra.tck.HelidonLRARecoveryService"),
             "META-INF/services/org.eclipse.microprofile.lra.tck.service.spi.LRARecoveryService");
+        
+        archive.addAsResource(new StringAsset("server.host=localhost\nserver.port=8080\n"), "META-INF/microprofile-config.properties");
 
         return archive;
     }

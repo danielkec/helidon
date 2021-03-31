@@ -2,67 +2,57 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-  <parent>
-    <artifactId>lra-test</artifactId>
-    <groupId>org.jboss.narayana.rts</groupId>
-    <version>5.10.7.Final-SNAPSHOT</version>
-  </parent>
   <modelVersion>4.0.0</modelVersion>
 
+  <groupId>lra-test-arquillian</groupId>
   <artifactId>lra-test-arquillian-extension</artifactId>
+  <version>1.0-SNAPSHOT</version>
   <name>LRA tests: Arquillian extension</name>
   <description>Arquillian extensions needed for LRA tests to work</description>
 
+  <properties>
+    <maven.compiler.source>11</maven.compiler.source>
+    <maven.compiler.target>11</maven.compiler.target>
+  </properties>
+  
   <dependencies>
     <dependency>
       <groupId>org.eclipse.microprofile.lra</groupId>
       <artifactId>microprofile-lra-api</artifactId>
-      <version>${version.microprofile.lra.api}</version>
+      <version>1.1-SNAPSHOT</version>
       <scope>compile</scope>
     </dependency>
     <dependency>
       <groupId>org.eclipse.microprofile.lra</groupId>
       <artifactId>microprofile-lra-tck</artifactId>
 <!--      <version>${version.microprofile.lra.tck}</version>-->
-      <version>1.0-SNAPSHOT</version>
+      <version>1.1-SNAPSHOT</version>
     </dependency>
+    
 
 
     <dependency>
-      <groupId>org.jboss.narayana.rts</groupId>
-      <artifactId>narayana-lra</artifactId>
-      <version>${project.version}</version>
+      <groupId>io.helidon.lra.clients</groupId>
+      <artifactId>helidon-lra-restclient</artifactId>
+      <version>2.3.0-SNAPSHOT</version>
     </dependency>
-    <dependency>
-      <groupId>org.jboss.narayana.rts</groupId>
-      <artifactId>lra-client</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>io.helidon.lra</groupId>
-      <artifactId>helidon-lra-client</artifactId>
-      <version>2.0.2-SNAPSHOT</version>
-    </dependency>
-
-
-
-
     <dependency>
       <groupId>org.jboss.shrinkwrap</groupId>
       <artifactId>shrinkwrap-api</artifactId>
-      <version>${version.org.jboss.shrinkwrap}</version>
+      <version>1.2.6</version>
       <scope>compile</scope>
     </dependency>
     <dependency>
       <groupId>org.jboss.arquillian.junit</groupId>
       <artifactId>arquillian-junit-container</artifactId>
+      <version>1.6.0.Final</version>
     </dependency>
-    <dependency>
-      <groupId>org.jboss.weld.se</groupId>
-      <artifactId>weld-se-shaded</artifactId>
-      <version>${version.org.jboss.weld.se}</version>
-      <scope>compile</scope>
-    </dependency>
+<!--    <dependency>-->
+<!--      <groupId>org.jboss.weld.se</groupId>-->
+<!--      <artifactId>weld-se-shaded</artifactId>-->
+<!--      <version></version>-->
+<!--      <scope>compile</scope>-->
+<!--    </dependency>-->
   </dependencies>
 
 

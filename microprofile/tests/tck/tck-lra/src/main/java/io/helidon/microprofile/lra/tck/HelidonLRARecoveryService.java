@@ -1,4 +1,4 @@
-package io.narayana.lra.arquillian.spi;
+package io.helidon.microprofile.lra.tck;
 
 import org.eclipse.microprofile.lra.tck.service.spi.LRARecoveryService;
 
@@ -8,11 +8,13 @@ import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriBuilder;
 import java.net.URI;
+import java.util.logging.Logger;
 
 
 public class HelidonLRARecoveryService implements LRARecoveryService {
-    private static final Logger log = Logger.getLogger(NarayanaLRARecovery.class);
 
+    static Logger log = Logger.getLogger(HelidonLRARecoveryService.class.getName());
+    
     /*
      * A bit of hacking to change the internals of annotations defined in LRA TCK.
      * There is need to adjust timeout defined on the annotation definition.
@@ -24,9 +26,9 @@ public class HelidonLRARecoveryService implements LRARecoveryService {
         for(String resourceClassName: resourceClassNames) {
             try {
                 Class<?> clazz = Class.forName(resourceClassName);
-                LRAAnnotationAdjuster.processWithClass(clazz);
+               // LRAAnnotationAdjuster.processWithClass(clazz);
             } catch (ClassNotFoundException e) {
-                log.debugf("Cannot load class %s to adjust LRA annotation on the class", resourceClassName);
+                log.fine(String.format("Cannot load class %s to adjust LRA annotation on the class", resourceClassName));
             }
         }
     }
@@ -71,7 +73,7 @@ public class HelidonLRARecoveryService implements LRARecoveryService {
         Client recoveryCoordinatorClient = ClientBuilder.newClient();
 
         try {
-            URI lraCoordinatorUri = new URI("http://localhost:8080/"); // LRAConstants.getLRACoordinatorUri(lraId);
+            URI lraCoordinatorUri = new URI("http://localhost:8090/"); // LRAConstants.getLRACoordinatorUri(lraId);
             URI recoveryCoordinatorUri = UriBuilder.fromUri(lraCoordinatorUri)
                     .path("lra-coordinator").build();
 //                    .path(RECOVERY_COORDINATOR_PATH_NAME).build();

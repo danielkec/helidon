@@ -36,7 +36,7 @@ public class LRA {
      * --> Closed --> (only if nested can go to cancelling) /
      */
     private static final Logger LOGGER = Logger.getLogger(LRA.class.getName());
-    public long timeout;
+    public long timeout = System.currentTimeMillis()+(1000*60);
     public String lraId;
     public URI parentId;
     List<String> compensatorLinks = new ArrayList<>();

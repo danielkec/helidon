@@ -28,6 +28,11 @@ public class HelidonLRARecoveryService implements LRARecoveryService {
 
     @Override
     public boolean waitForEndPhaseReplay(URI lraId) {
+        try {
+            Thread.sleep(5*1000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
         return true;
     }
 }

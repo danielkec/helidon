@@ -15,7 +15,7 @@
  */
 package io.helidon.lra.rest;
 
-import javax.ws.rs.ext.Provider;
+import javax.enterprise.context.ApplicationScoped;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -23,7 +23,7 @@ import java.util.Map;
  * This class is tracking individual collected LRA participants that
  * contain one or more non-JAX-RS participant methods in their definitions.
  */
-@Provider
+@ApplicationScoped
 public class LRAParticipantRegistry {
 
     private final Map<String, LRAParticipant> lraParticipants;
@@ -31,6 +31,10 @@ public class LRAParticipantRegistry {
     // required for Weld to be able to create proxy
     public LRAParticipantRegistry() {
         lraParticipants = new HashMap<>();
+    }
+    
+    public Map<String, LRAParticipant> lraParticipants(){
+        return lraParticipants;
     }
 
     LRAParticipantRegistry(Map<String, LRAParticipant> lraParticipants) {

@@ -29,7 +29,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
 
 @Provider
-@Produces(MediaType.APPLICATION_OCTET_STREAM)
+@Produces(MediaType.TEXT_PLAIN)
 public class ParticipantStatusOctetStreamProvider implements MessageBodyWriter<ParticipantStatus> {
     @Override
     public boolean isWriteable(Class<?> type, Type genericType, Annotation[] annotations, MediaType mediaType) {

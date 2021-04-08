@@ -7,7 +7,7 @@ manually.
 
 Apply diff below:
 
-```
+```java
 diff --git a/tck/src/main/java/org/eclipse/microprofile/lra/tck/participant/api/AfterLRAListener.java b/tck/src/main/java/org/eclipse/microprofile/lra/tck/participant/api/AfterLRAListener.java
 index ff690aa..49df32b 100644
 --- a/tck/src/main/java/org/eclipse/microprofile/lra/tck/participant/api/AfterLRAListener.java
@@ -46,6 +46,23 @@ index ff690aa..49df32b 100644
          return lraTestService.processAfterLRAInfo(lraId, status, AfterLRAListener.class,
              AFTER_LRA_LISTENER_PATH + AFTER_LRA);
      }
+```
+and 
+
+```java
+diff --git a/tck/src/main/java/org/eclipse/microprofile/lra/tck/TckContextTests.java b/tck/src/main/java/org/eclipse/microprofile/lra/tck/TckContextTests.java
+--- a/tck/src/main/java/org/eclipse/microprofile/lra/tck/TckContextTests.java	(revision 2c819998fc9d3d468052d3619fa50d6cbe3ad14e)
++++ b/tck/src/main/java/org/eclipse/microprofile/lra/tck/TckContextTests.java	(date 1617879755127)
+@@ -297,7 +297,7 @@
+             .path(AfterLRAListener.AFTER_LRA_LISTENER_WORK)
+             .request()
+             .header(LRA_HTTP_CONTEXT_HEADER, lra)
+-            .put(null);
++            .put(Entity.text(""));
+ 
+         assertEquals("AfterLRA listener hasn't been enlisted for the notification",
+             200, enlistResponse.getStatus());
+
 ```
 
 2. Built the TCKs and update pom.xml in this directory to point to the new artifact

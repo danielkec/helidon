@@ -19,6 +19,7 @@ package io.helidon.microprofile.arquillian;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.InvocationTargetException;
 import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.net.URL;
@@ -166,6 +167,10 @@ public class HelidonDeployableContainer implements DeployableContainer<HelidonCo
         } catch (IOException e) {
             LOGGER.log(Level.INFO, "Failed to start container", e);
             throw new DeploymentException("Failed to copy the archive assets into the deployment directory", e);
+        } catch (InvocationTargetException e) {
+            throw lookForSupressedDeploymentException(e.getTargetException())
+                    .map(d -> new org.jboss.arquillian.container.spi.client.container.DeploymentException("Oj!",d))
+                    .orElseThrow(() -> new DefinitionException(e));
         } catch (ReflectiveOperationException e) {
             LOGGER.log(Level.INFO, "Failed to start container", e);
             throw new DefinitionException(e);        // validation exceptions
@@ -176,6 +181,26 @@ public class HelidonDeployableContainer implements DeployableContainer<HelidonCo
         //        pm.addContext(new HTTPContext("Helidon", "localhost", containerConfig.getPort()));
         //        return pm;
         return new ProtocolMetaData();
+    }
+    
+    static Optional<IllegalStateException> lookForSupressedDeploymentException(Throwable t){
+        if(t == null){
+            return Optional.empty();
+        }
+        if(IllegalStateException.class.isAssignableFrom(t.getClass())){
+            return Optional.of((IllegalStateException) t);
+        }
+        var deploymentException = lookForSupressedDeploymentException(t.getCause());
+        for(Throwable suppressed : t.getSuppressed()){
+            var candicate = lookForSupressedDeploymentException(suppressed);
+            if(candicate.isPresent()){
+                deploymentException = candicate;
+            }
+        }
+        if (deploymentException.isPresent()){
+            return deploymentException;
+        }
+        return Optional.empty();
     }
 
     void startServer(RunContext context, Path[] classPath)

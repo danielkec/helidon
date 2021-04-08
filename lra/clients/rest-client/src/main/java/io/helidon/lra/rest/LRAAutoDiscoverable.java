@@ -24,6 +24,7 @@ public class LRAAutoDiscoverable implements AutoDiscoverable {
         ctx.register(ClientLRARequestFilter.class)
                 .register(ClientLRAResponseFilter.class)
                 .register(ServerLRAFilter.class)
-                .register(LRAStatusBodyReader.class);
+                .register(LRAStatusBodyReader.class)
+                .register(ParticipantStatusOctetStreamProvider.class);
     }
 }

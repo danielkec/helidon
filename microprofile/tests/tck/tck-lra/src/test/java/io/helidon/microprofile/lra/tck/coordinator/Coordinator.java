@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
 
@@ -48,6 +49,7 @@ import javax.xml.bind.JAXBException;
 
 import io.helidon.common.reactive.CompletionAwaitable;
 import io.helidon.common.reactive.Single;
+import io.helidon.microprofile.scheduling.FixedRate;
 import io.helidon.microprofile.scheduling.Scheduled;
 
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
@@ -137,12 +139,15 @@ public class Coordinator {
                 LRA parent = lraPersistentRegistry.get(parentLRA.replace(coordinatorURL, ""));  //todo resolve coordinatorUrl here with member coordinatorURL
                 if (parent != null) { // todo null would be unexpected and cause to compensate or exit entirely akin to systemexception
                     LRA childLRA = new LRA(lraUUID, new URI(parentLRA));
+                    childLRA.setupTimeout(timelimit);
                     lraPersistentRegistry.put(lraUUID, childLRA);
                     parent.addChild(childLRA);
                     rootParentOrChild = "nested(" + childLRA.nestingDetail() + ")";
                 }
             } else {
-                lraPersistentRegistry.put(lraUUID, new LRA(lraUUID));
+                LRA newLra = new LRA(lraUUID);
+                newLra.setupTimeout(timelimit);
+                lraPersistentRegistry.put(lraUUID, newLra);
             }
             log("[start] " + rootParentOrChild + " clientId = " + clientId + ", timelimit = " + timelimit +
                     ", parentLRA = " + parentLRA + ", parentId = " + parentId + " lraId:" + lraId);
@@ -172,7 +177,11 @@ public class Coordinator {
             @PathParam("LraId") String lraId) throws NotFoundException {
         LRA lra = lraPersistentRegistry.get(lraId);
         if (lra == null) {
-            return Response.serverError().build();
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+        if (lra.isReadyToDelete()) {
+            // Already time-outed
+            return Response.status(Response.Status.GONE).build();
         }
         log("[close] " + getParentChildDebugString(lra) + " lraId:" + lraId);
         lra.terminate(false, true);
@@ -186,7 +195,7 @@ public class Coordinator {
         LRA lra = lraPersistentRegistry.get(lraId);
         log("[cancel] " + getParentChildDebugString(lra) + " lraId:" + lraId);
         if (lra == null) {
-            return Response.serverError().build();
+            return Response.status(Response.Status.NOT_FOUND).build();
         }
         lra.terminate(true, true);
         return Response.ok().build();
@@ -207,20 +216,12 @@ public class Coordinator {
         if (lra == null) {
             log("[join] lraRecord == null for lraIdString:" + lraIdString +
                     "lraRecordMap.size():" + lraPersistentRegistry.size());
-            return Response.ok().build(); //todo this is actually error
+            return Response.status(Response.Status.NOT_FOUND).build(); //todo this is actually error
         } else {
-            if (timeLimit == 0) timeLimit = 60;
-            if (lra.timeout == 0) { // todo overrides
-                if (timeLimit == 500) {
-                    lra.timeout = System.currentTimeMillis() + 500;
-                } else {
-                    lra.timeout = System.currentTimeMillis() + (1000 * timeLimit); //todo convert to whatever measurement
-                }
-            }
-            long currentTime = System.currentTimeMillis();
-            if (currentTime > lra.timeout) {
+            if (lra.checkTimeout()) {
                 log("[join] expired");
-                return Response.status(412).build(); // 410 also acceptable/equivalent behavior
+                // too late to join
+                return Response.status(Response.Status.PRECONDITION_FAILED).build(); // 410 also acceptable/equivalent behavior
             }
         }
         if (compensatorData == null || compensatorData.trim().equals("")) {
@@ -229,19 +230,20 @@ public class Coordinator {
         String debugString = lra.addParticipant(compensatorLink);
         log("[join] " + debugString + " to " + getParentChildDebugString(lra) +
                 " lraIdParam = " + lraIdParam + ", timeLimit = " + timeLimit);
-        StringBuilder recoveryUrl = new StringBuilder(); //todo
+        String recoveryUrl = coordinatorURL + lraIdString;
         try {
             return Response.status(status)
-                    .entity(recoveryUrl.toString())
-                    .location(new URI(recoveryUrl.toString()))
-                    .header(LRA_HTTP_RECOVERY_HEADER, coordinatorURL + lraIdString)
+                    .entity(recoveryUrl)
+                    .location(new URI(recoveryUrl))
+                    .header(LRA_HTTP_RECOVERY_HEADER, recoveryUrl)
                     .build();
         } catch (URISyntaxException e) {
             throw new RuntimeException(e);
         }
     }
     
-    @Scheduled(value = "0/5 * * * * ? *")
+//    @Scheduled(value = "0/5 * * * * ? *")
+    @FixedRate(value = 100, timeUnit = TimeUnit.MILLISECONDS)
     public void run() {
         lraPersistentRegistry.stream().forEach(lra -> {
             if (!lra.isProcessing()) {
@@ -278,11 +280,10 @@ public class Coordinator {
                 }
             }
         } else {
-            long currentTime = System.currentTimeMillis();
-            if (lra.timeout < currentTime) {
-                log("[timeout], will end uri:" + uri +
-                        " timeout:" + lra.timeout + " currentTime:" + currentTime +
-                        " ms over:" + (currentTime - lra.timeout));
+            if (lra.checkTimeout()) {
+//                log("[timeout], will end uri:" + uri +
+//                        " timeout:" + lra.timeout + " currentTime:" + currentTime +
+//                        " ms over:" + (currentTime - lra.timeout));
                 lra.terminate(true, false);
             }
         }

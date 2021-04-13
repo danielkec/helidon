@@ -48,7 +48,7 @@ public class LRA {
      * --> Closed --> (only if nested can go to cancelling) /
      */
     private static final Logger LOGGER = Logger.getLogger(LRA.class.getName());
-    public long timeout;
+    private long timeout;
     @XmlID
     public String lraId;
     public URI parentId;
@@ -69,7 +69,7 @@ public class LRA {
     boolean isNestedThatShouldBeForgottenAfterParentEnds = false;
     public int nestedDepth;
     private boolean isProcessing;
-    private boolean isReadyToDelete;
+    private long isReadyToDelete = 0;
 
     public LRA(String lraUUID) {
         lraId = lraUUID;
@@ -82,6 +82,18 @@ public class LRA {
     }
 
     public LRA() {
+    }
+
+    public void setupTimeout(long timeLimit) {
+        if (timeLimit != 0) {
+            this.timeout = System.currentTimeMillis() + timeLimit;
+        } else {
+            this.timeout = 0;
+        }
+    }
+    
+    public boolean checkTimeout(){
+        return timeout > 0 && timeout < System.currentTimeMillis();
     }
 
     /**
@@ -198,7 +210,10 @@ public class LRA {
         fine("areAllInEndState():" + areAllInEndState() + " areAllAfterLRASuccessfullyCalledOrForgotten():" + areAllAfterLRASuccessfullyCalledOrForgotten() +
                 " !areAllForgottenOrNoForgetMethodExists():" + !areAllForgottenOrNoForgetMethodExists() + " isUnilateralCallIfNested:" + isUnilateralCallIfNested);
         if (areAllInEndState() && areAllAfterLRASuccessfullyCalledOrForgotten()) {
-            if (forgetAnyUnilaterallyCompleted()) isReadyToDelete = true;
+            if (forgetAnyUnilaterallyCompleted()) {
+                // keep terminated for 5 minutes before deletion
+                isReadyToDelete = System.currentTimeMillis() + 5 * 1000 * 60;
+            }
         }
         setProcessing(false);
     }
@@ -258,7 +273,7 @@ public class LRA {
     }
 
     public boolean isReadyToDelete() {
-        return isReadyToDelete;
+        return isReadyToDelete != 0 && isReadyToDelete < System.currentTimeMillis();
     }
 
     public boolean hasStatusEndpoints() {

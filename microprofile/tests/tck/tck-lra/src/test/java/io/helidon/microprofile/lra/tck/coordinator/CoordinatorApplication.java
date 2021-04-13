@@ -13,19 +13,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package io.helidon.microprofile.lra.tck.coordinator;
 
-package io.helidon.microprofile.lra.tck;
+import java.util.HashSet;
+import java.util.Set;
 
-import org.jboss.arquillian.container.test.impl.enricher.resource.URLResourceProvider;
-import org.jboss.arquillian.core.spi.LoadableExtension;
-import org.jboss.arquillian.test.spi.enricher.resource.ResourceProvider;
+import javax.enterprise.context.ApplicationScoped;
+import javax.ws.rs.ApplicationPath;
+import javax.ws.rs.core.Application;
 
-public class LraExtension implements LoadableExtension {
+@ApplicationScoped
+@ApplicationPath("/")
+public class CoordinatorApplication extends Application {
 
     @Override
-    public void register(ExtensionBuilder extensionBuilder) {
-        extensionBuilder.override(ResourceProvider.class, URLResourceProvider.class,
-                CoordinatorURLResourceProvider.class);
-        extensionBuilder.observer(CoordinatorDeployer.class);
+    public Set<Class<?>> getClasses() {
+        Set<Class<?>> s = new HashSet<>();
+        s.add(Coordinator.class);
+        s.add(RecoveryManager.class);
+        s.add(FilterRegistration.class);
+        return s;
     }
+
 }
+

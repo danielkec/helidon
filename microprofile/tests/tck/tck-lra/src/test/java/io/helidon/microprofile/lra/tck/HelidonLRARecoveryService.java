@@ -17,13 +17,22 @@
 package io.helidon.microprofile.lra.tck;
 
 import java.net.URI;
+import java.util.concurrent.TimeUnit;
 
 import org.eclipse.microprofile.lra.tck.service.spi.LRARecoveryService;
+
+import io.helidon.microprofile.lra.tck.coordinator.Coordinator;
 
 public class HelidonLRARecoveryService implements LRARecoveryService {
 
     @Override
     public void waitForCallbacks(URI lraId) {
+//        try {
+//            Thread.sleep(2*1000);
+//        } catch (InterruptedException e) {
+//            e.printStackTrace();
+//        }
+       // Coordinator.waitForNextRecoveryCycle().await(7, TimeUnit.SECONDS);
     }
 
     @Override

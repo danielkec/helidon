@@ -19,6 +19,9 @@ package io.helidon.microprofile.arquillian;
 import org.jboss.arquillian.container.spi.ConfigurationException;
 import org.jboss.arquillian.container.spi.client.container.ContainerConfiguration;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Configuration for the Helidon arquillian container.
  *
@@ -34,6 +37,7 @@ import org.jboss.arquillian.container.spi.client.container.ContainerConfiguratio
  * </ul>
  */
 public class HelidonContainerConfiguration implements ContainerConfiguration {
+    Map<String, String> customMap = new HashMap<>();
     private String appClassName = null;
     private String excludeArchivePattern = null;
     private int port = 8080;
@@ -41,10 +45,18 @@ public class HelidonContainerConfiguration implements ContainerConfiguration {
     private boolean useRelativePath = false;
     private boolean useParentClassloader = true;
 
+    public void set(String propertyName, String value){
+        customMap.put(propertyName, value);
+    }
+    
+    public String get(String propertyName){
+        return customMap.get(propertyName);
+    }
+    
     public String getApp() {
         return appClassName;
     }
-
+    
     public void setApp(String app) {
         this.appClassName = app;
     }

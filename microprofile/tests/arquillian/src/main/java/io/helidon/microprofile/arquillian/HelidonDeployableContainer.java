@@ -88,10 +88,20 @@ public class HelidonDeployableContainer implements DeployableContainer<HelidonCo
     // runnables that must be executed on stop
     private static final ConcurrentLinkedQueue<Runnable> STOP_RUNNABLES = new ConcurrentLinkedQueue<>();
 
+    public List<Archive<?>> getAdditionalArchives() {
+        return additionalArchives;
+    }
+
+    public HelidonContainerConfiguration getContainerConfig() {
+        return containerConfig;
+    }
+
+    private List<Archive<?>> additionalArchives = new ArrayList<>();
+    
     /**
      * The configuration for this container.
      */
-    private HelidonContainerConfiguration containerConfig;
+    HelidonContainerConfiguration containerConfig;
     private Pattern excludedLibrariesPattern;
 
     /**
@@ -148,6 +158,10 @@ public class HelidonDeployableContainer implements DeployableContainer<HelidonCo
 
             copyArchiveToDeployDir(archive, context.deployDir);
 
+            for (Archive<?> additionalArchive : additionalArchives) {
+                copyArchiveToDeployDir(additionalArchive, context.deployDir);
+            }
+            
             List<Path> classPath = new ArrayList<>();
 
             Path rootDir = context.deployDir.resolve("");
@@ -253,6 +267,7 @@ public class HelidonDeployableContainer implements DeployableContainer<HelidonCo
         Config config = ConfigProviderResolver.instance()
                 .getBuilder()
                 .withSources(findMpConfigSources(classPath))
+                .withSources(MpConfigSources.create(containerConfig.customMap))
                 .addDiscoveredConverters()
                 // will read application.yaml
                 .addDiscoveredSources()

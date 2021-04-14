@@ -19,9 +19,11 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import javax.xml.bind.annotation.XmlAccessType;
 import javax.xml.bind.annotation.XmlAccessorType;
@@ -91,8 +93,8 @@ public class LRA {
             this.timeout = 0;
         }
     }
-    
-    public boolean checkTimeout(){
+
+    public boolean checkTimeout() {
         return timeout > 0 && timeout < System.currentTimeMillis();
     }
 
@@ -108,74 +110,59 @@ public class LRA {
         } else {
             compensatorLinks.add(compensatorLink);
         }
-        log(compensatorLink);
-        String uriPrefix = null;
-        Participant participant = null;
-        if (compensatorLink.contains("<http://")) {
-            uriPrefix = "<http://";
-            participant = new Participant();
-        } else if (compensatorLink.contains("<messaging://helidon-aq")) {
-            uriPrefix = "<messaging://";
-            // participant = new AQParticipant();
-        } else if (compensatorLink.contains("<messaging://helidon-kafka")) {
-            uriPrefix = "<messaging://";
-            // participant = new KafkaParticipant();
-        }
-        if (participant != null) {
-            participants.add(participant);
-            String endpoint = "";
-            Pattern linkRelPattern = Pattern.compile("(\\w+)=\"([^\"]+)\"|([^\\s]+)");
-            Matcher relMatcher = linkRelPattern.matcher(compensatorLink);
-            while (relMatcher.find()) {
-                String group0 = relMatcher.group(0);
-                if (group0.indexOf(uriPrefix) > -1) {
-                    endpoint = group0.substring(group0.indexOf(uriPrefix) + 1, group0.indexOf(";") - 1);
-                    log("endpoint:" + endpoint);
-                }
-                String key = relMatcher.group(1);
-                if (key != null && key.equals("rel")) {
-                    String rel = getConditionalStringValue(relMatcher.group(2) == null, relMatcher.group(3), relMatcher.group(2));
-                    try {
-                        if (rel.equals("complete")) {
-                            participant.setCompleteURI(new URI(endpoint));
-                        }
-                        if (rel.equals("compensate")) {
-                            participant.setCompensateURI(new URI(endpoint));
-                        }
-                        if (rel.equals("after")) {
-                            participant.setAfterURI(new URI(endpoint));
-                        }
-                        if (rel.equals("status")) {
-                            participant.setStatusURI(new URI(endpoint));
-                            hasStatusEndpoints = true;
-                        }
-                        if (rel.equals("forget")) {
-                            participant.setForgetURI(new URI(endpoint));
-                        }
-                    } catch (URISyntaxException e) {
-                        e.printStackTrace();
+        Participant participant = new Participant();
+        String uriPrefix = "<http://";
+        participants.add(participant);
+        String endpoint = "";
+        Pattern linkRelPattern = Pattern.compile("(\\w+)=\"([^\"]+)\"|([^\\s]+)");
+        Matcher relMatcher = linkRelPattern.matcher(compensatorLink);
+        while (relMatcher.find()) {
+            String group0 = relMatcher.group(0);
+            if (group0.contains(uriPrefix)) {
+                endpoint = group0.substring(group0.indexOf(uriPrefix) + 1, group0.indexOf(";") - 1);
+            }
+            String key = relMatcher.group(1);
+            if (key != null && key.equals("rel")) {
+                String rel = getConditionalStringValue(relMatcher.group(2) == null, relMatcher.group(3), relMatcher.group(2));
+                try {
+                    if (rel.equals("complete")) {
+                        participant.setCompleteURI(new URI(endpoint));
                     }
+                    if (rel.equals("compensate")) {
+                        participant.setCompensateURI(new URI(endpoint));
+                    }
+                    if (rel.equals("after")) {
+                        participant.setAfterURI(new URI(endpoint));
+                    }
+                    if (rel.equals("status")) {
+                        participant.setStatusURI(new URI(endpoint));
+                        hasStatusEndpoints = true;
+                    }
+                    if (rel.equals("forget")) {
+                        participant.setForgetURI(new URI(endpoint));
+                    }
+                } catch (URISyntaxException e) {
+                    e.printStackTrace();
                 }
             }
-            if (!participant.init()) {
-                throw new RuntimeException("unable to initialize participant:" + participant); //todo better exception/handling
-            }
-            RecoveryManager.getInstance().log(participant);
-            return "LRA joined/added:" + (getConditionalStringValue(participant.isListenerOnly(), "listener:", "participant:")) + participant;
-        } else {
-            return "no address found in compensatorLink:" + compensatorLink;
         }
+        if (!participant.init()) {
+            throw new RuntimeException("unable to initialize participant:" + participant); //todo better exception/handling
+        }
+        return "LRA joined/added:" + (getConditionalStringValue(participant.isListenerOnly(), "listener:", "participant:")) + participant;
+
     }
 
     /**
      * Remove participant that has asked to leave
      *
      * @param compensatorUrl
-     * @param b
-     * @param b1
      */
-    public void removeParticipant(String compensatorUrl, boolean b, boolean b1) {
-        participants = new ArrayList<>(); //todo remove just the participant specified
+    public void removeParticipant(String compensatorUrl) {
+        Set<Participant> forRemove = participants.stream()
+                .filter(p -> p.equalCompensatorUris(compensatorUrl))
+                .collect(Collectors.toSet());
+        forRemove.forEach(participants::remove);
     }
 
     /**
@@ -199,7 +186,6 @@ public class LRA {
         }
         if (isParent) {
             for (LRA nestedLRA : children) {
-                log("LRA.endChildren nestedLRA.participants.size():" + nestedLRA.participants.size());
                 if (!nestedLRA.areAllInEndStateOrListenerOnlyForTerminationType(isCancel)) {
                     nestedLRA.terminate(isCancel, false); //todo this is the classic afterLRA/tx sync scenario - need to check if we traverse the tree twice or couple end and listener calls
                 }
@@ -207,8 +193,6 @@ public class LRA {
         }
         sendCompleteOrCancel(isCancel);
         sendAfterLRA();
-        fine("areAllInEndState():" + areAllInEndState() + " areAllAfterLRASuccessfullyCalledOrForgotten():" + areAllAfterLRASuccessfullyCalledOrForgotten() +
-                " !areAllForgottenOrNoForgetMethodExists():" + !areAllForgottenOrNoForgetMethodExists() + " isUnilateralCallIfNested:" + isUnilateralCallIfNested);
         if (areAllInEndState() && areAllAfterLRASuccessfullyCalledOrForgotten()) {
             if (forgetAnyUnilaterallyCompleted()) {
                 // keep terminated for 5 minutes before deletion
@@ -219,14 +203,13 @@ public class LRA {
     }
 
     public boolean forgetAnyUnilaterallyCompleted() {
-        boolean isAllThatNeedsToBeForgottenForgotten = true;
+        boolean isAllThatNeedsToBeForgotten = true;
         for (LRA nestedLRA : children) {
-            log("LRA.forgetAnyUnilaterallyCompleted");
             if (nestedLRA.isNestedThatShouldBeForgottenAfterParentEnds) {
                 if (!nestedLRA.sendForget()) return false;
             }
         }
-        return isAllThatNeedsToBeForgottenForgotten;
+        return isAllThatNeedsToBeForgotten;
     }
 
     private void sendCompleteOrCancel(boolean isCancel) {
@@ -247,7 +230,10 @@ public class LRA {
         }
     }
 
-    void sendStatus() {
+    void trySendStatus() {
+        if(!hasStatusEndpoints()){
+            return;
+        }
         for (Participant participant : participants) {
             URI statusURI = participant.getStatusURI();
             if (statusURI == null || participant.isInEndStateOrListenerOnly()) continue;
@@ -326,76 +312,7 @@ public class LRA {
         return true;
     }
 
-    // currently unused though may well be useful if only for debug
-    private boolean areAllForgottenOrNoForgetMethodExists() {
-        for (Participant participant : participants) {
-            if (!participant.isForgotten()) return false;
-        }
-        return true;
-    }
-
-    // currently unused though may well be useful if only for debug
-    public boolean areAllAfterLRASuccessfullyCalled() {
-        for (Participant participant : participants) {
-            if (!participant.isAfterLRASuccessfullyCalledIfEnlisted()) return false;
-        }
-        return true;
-    }
-
-    // currently unused though may well be useful if only for debug
-    public boolean areAllInEndStateCompletedOrFailedToComplete() {
-        for (Participant participant : participants) {
-            if (participant.getParticipantStatus() != Completed && participant.getParticipantStatus() != FailedToComplete) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    // currently unused though may well be useful if only for debug
-    public boolean areAllCompletedOrCompensatedSuccessfully() {
-        for (Participant participant : participants) {
-            if (participant.getParticipantStatus() != ParticipantStatus.Completed &&
-                    participant.getParticipantStatus() != Compensated) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    void log(String message) {
-        LOGGER.info("[lra][depth:" + nestedDepth + "] " + message);
-    }
-
-    void fine(String message) {
-        LOGGER.fine("[lra][depth:" + nestedDepth + "] " + message);
-    }
-
     public String getConditionalStringValue(boolean isTrue, String first, String second) {
         return isTrue ? first : second;
-    }
-
-    /**
-     * Debug string providing the path to the root for nested LRAs
-     * level = root(0 - lraID) --> child(1 - lraID) --> child(2 - lraID) ...
-     *
-     * @return debug String
-     */
-    public String nestingDetail() {
-        int depth = 0;
-        LRA lra = this;
-        while (lra.isChild) {
-            depth++;
-            lra = lra.parent;
-        }
-        nestedDepth = depth;
-        StringBuilder nestingDetail = new StringBuilder();
-        lra = this;
-        while (lra.isChild) {
-            nestingDetail.insert(0, " depth[" + depth + "] = " + lra.lraId);
-            depth--;
-            lra = lra.parent;
-        }
-        return nestingDetail.toString();
     }
 }

@@ -1,25 +1,18 @@
 package io.helidon.microprofile.lra.tck;
 
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
 
 import javax.enterprise.inject.se.SeContainer;
 import javax.enterprise.inject.spi.CDI;
-import javax.ws.rs.client.ClientBuilder;
 
 import io.helidon.microprofile.arquillian.HelidonContainerConfiguration;
 import io.helidon.microprofile.arquillian.HelidonDeployableContainer;
 import io.helidon.microprofile.lra.tck.coordinator.Coordinator;
-import io.helidon.microprofile.lra.tck.coordinator.CoordinatorApplication;
 
 import org.jboss.arquillian.container.spi.Container;
 import org.jboss.arquillian.container.spi.client.container.DeploymentException;
-import org.jboss.arquillian.container.spi.event.container.AfterDeploy;
 import org.jboss.arquillian.container.spi.event.container.BeforeStart;
-import org.jboss.arquillian.container.spi.event.container.BeforeStop;
 import org.jboss.arquillian.container.spi.event.container.BeforeUnDeploy;
 import org.jboss.arquillian.core.api.annotation.Observes;
 import org.jboss.shrinkwrap.api.ShrinkWrap;
@@ -28,7 +21,6 @@ import org.jboss.shrinkwrap.api.spec.JavaArchive;
 
 public class CoordinatorDeployer {
 
-    private static final List<JavaArchive> deployments = new ArrayList<>();
 
     public void beforeStart(@Observes BeforeStart event, Container container) throws Exception {
 //        if(true){
@@ -47,12 +39,12 @@ public class CoordinatorDeployer {
                 .addPackage(Coordinator.class.getPackage())
                 .addAsManifestResource(new StringAsset(
                         "<beans xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n" +
-                        "       xmlns=\"http://xmlns.jcp.org/xml/ns/javaee\"\n" +
-                        "       xsi:schemaLocation=\"http://xmlns.jcp.org/xml/ns/javaee\n" +
-                        "                           http://xmlns.jcp.org/xml/ns/javaee/beans_2_0.xsd\"\n" +
-                        "       version=\"2.0\"\n" +
-                        "       bean-discovery-mode=\"annotated\">\n" +
-                        "</beans>"), "beans.xml");
+                                "       xmlns=\"http://xmlns.jcp.org/xml/ns/javaee\"\n" +
+                                "       xsi:schemaLocation=\"http://xmlns.jcp.org/xml/ns/javaee\n" +
+                                "                           http://xmlns.jcp.org/xml/ns/javaee/beans_2_0.xsd\"\n" +
+                                "       version=\"2.0\"\n" +
+                                "       bean-discovery-mode=\"annotated\">\n" +
+                                "</beans>"), "beans.xml");
 
 
         helidonContainer.getAdditionalArchives().add(javaArchive);
@@ -60,14 +52,11 @@ public class CoordinatorDeployer {
     }
 
     public void beforeUndeploy(@Observes BeforeUnDeploy event, Container container) throws DeploymentException {
-        System.out.println("Undeploying!!!!!!");
+        // Gracefully stop the container so mock coordinator gets the chance to persist lra registry
         try {
             CDI<Object> current = CDI.current();
             ((SeContainer) current).close();
-        }catch (Throwable t){}
-    }
-
-    public void beforeStop(@Observes BeforeStop event, Container container) throws DeploymentException {
-        System.out.println("Stopping!!!!!!");
+        } catch (Throwable t) {
+        }
     }
 }

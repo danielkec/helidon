@@ -15,7 +15,6 @@
  */
 package io.helidon.microprofile.lra.tck.coordinator;
 
-import java.util.HashSet;
 import java.util.Set;
 
 import javax.enterprise.context.ApplicationScoped;
@@ -28,11 +27,7 @@ public class CoordinatorApplication extends Application {
 
     @Override
     public Set<Class<?>> getClasses() {
-        Set<Class<?>> s = new HashSet<>();
-        s.add(Coordinator.class);
-        s.add(RecoveryManager.class);
-        s.add(FilterRegistration.class);
-        return s;
+        return Set.of(Coordinator.class);
     }
 
 }

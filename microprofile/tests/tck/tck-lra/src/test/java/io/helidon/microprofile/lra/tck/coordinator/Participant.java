@@ -16,12 +16,17 @@
 package io.helidon.microprofile.lra.tck.coordinator;
 
 import java.net.URI;
+import java.util.Arrays;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.ClientBuilder;
 import javax.ws.rs.client.Entity;
+import javax.ws.rs.core.Link;
 import javax.ws.rs.core.Response;
 import javax.xml.bind.annotation.XmlAccessType;
 import javax.xml.bind.annotation.XmlAccessorType;
@@ -57,7 +62,7 @@ public class Participant {
     private boolean isForgotten;
     private ParticipantStatus participantStatus;
     private URI completeURI; // a method to be executed when the LRA is closed 200, 202, 409, 410
-    private URI compensateURI; //  a method to be executed when the LRA is cancelled 200, 202, 409, 410
+    private URI compensateURI; // a method to be executed when the LRA is cancelled 200, 202, 409, 410
     private URI afterURI;  // a method that will be reliably invoked when the LRA enters one of the final states 200
     private URI forgetURI; // a method to be executed when the LRA allows participant to clear all associated information 200, 410
     private URI statusURI; // a method that allow user to state status of the participant with regards to a particular LRA 200, 202, 410
@@ -136,8 +141,7 @@ public class Participant {
     }
 
     public String toString() {
-        return "Participant type:" + getParticipantType() +
-                "\n participantStatus:" + participantStatus +
+        return "ParticipantStatus:" + participantStatus +
                 "\n completeURI:" + completeURI +
                 "\n compensateURI:" + compensateURI +
                 "\n afterURI:" + afterURI +
@@ -165,30 +169,15 @@ public class Participant {
         }
     }
 
-
-    public void logParticipantMessageWithTypeAndDepth(String message, int nestedDepth) {
-        LOGGER.info("[" + getParticipantType() + " participant][depth:" + nestedDepth + "] " + message);
-    }
-
-
     public boolean init() {
         return true;
-    }
-
-    String getParticipantType() {
-        return "Rest";
     }
 
     void sendCompleteOrCancel(LRA lra, boolean isCancel) {
         URI endpointURI = isCancel ? getCompensateURI() : getCompleteURI();
         try {
-            logParticipantMessageWithTypeAndDepth("RestParticipant " + " endpointURI: " + endpointURI, lra.nestedDepth);
             Response response = sendCompleteOrCompensate(lra, endpointURI, isCancel);
             int responsestatus = response.getStatus(); // expected codes 200, 202, 409, 410
-            String readEntity = response.readEntity(String.class);
-            logParticipantMessageWithTypeAndDepth("RestParticipant " + lra.getConditionalStringValue(isCancel, "compensate", "complete") +
-                            " finished,  response:" + response + ":" + responsestatus + " readEntity:" + readEntity,
-                    lra.nestedDepth);
             if (responsestatus == 503) { //  Service Unavailable, retriable - todo this should be the full range of invalid/retriable values
                 lra.isRecovering = true;
             } else if (responsestatus == 409) { //conflict, retriable
@@ -203,13 +192,11 @@ public class Participant {
                 lra.isRecovering = true;
             }
         } catch (Exception e) { // Exception:javax.ws.rs.ProcessingException: java.net.ConnectException: Connection refused (Connection refused)
-            logParticipantMessageWithTypeAndDepth("RestParticipant sendCompleteOrCancel Exception:" + e, lra.nestedDepth);
             lra.isRecovering = true;
         }
     }
 
     private Response sendCompleteOrCompensate(LRA lra, URI endpointURI, boolean isCompensate) {
-        logParticipantMessageWithTypeAndDepth("parentId:" + lra.parentId, lra.nestedDepth);
         return client.target(endpointURI)
                 .request()
                 .header(LRA_HTTP_CONTEXT_HEADER, Coordinator.coordinatorURL + lra.lraId)
@@ -225,7 +212,6 @@ public class Participant {
         try {
             URI afterURI = getAfterURI();
             if (afterURI != null) {
-                logParticipantMessageWithTypeAndDepth("RestParticipant " + " afterURI: " + afterURI, lra.nestedDepth);
                 if (isAfterLRASuccessfullyCalledIfEnlisted()) return;
                 Response response = client.target(afterURI)
                         .request()
@@ -237,10 +223,9 @@ public class Participant {
                         .invoke();
                 int responsestatus = response.getStatus();
                 if (responsestatus == 200) setAfterLRASuccessfullyCalledIfEnlisted();
-                logParticipantMessageWithTypeAndDepth("RestParticipant afterLRA finished, response:" + response, lra.nestedDepth);
             }
         } catch (Exception e) {
-            logParticipantMessageWithTypeAndDepth("RestParticipant afterLRA Exception:" + e, lra.nestedDepth);
+            e.printStackTrace();
         }
     }
 
@@ -267,13 +252,8 @@ public class Participant {
             } else {
                 setParticipantStatus(lra.isCancel ? Compensated : Completed); // not exactly accurate as it's GONE not explicitly completed or compensated
             }
-            logParticipantMessageWithTypeAndDepth("LRA sendStatus:" + statusURI + " finished  response:" +
-                    response + ":" + responsestatus + " participantStatus:" + participantStatus +
-                    " readEntity:" + readEntity, lra.nestedDepth);
         } catch (Exception e) { // IllegalArgumentException: No enum constant org.eclipse.microprofile.lra.annotation.ParticipantStatus.
-            logParticipantMessageWithTypeAndDepth("LRA sendStatus:" + statusURI + " finished  response:" +
-                    response + ":" + responsestatus + " participantStatus:" + participantStatus +
-                    " readEntity:" + readEntity + " Exception:" + e, lra.nestedDepth);
+            e.printStackTrace();
         }
     }
 
@@ -288,17 +268,57 @@ public class Participant {
                     .header(LRA_HTTP_RECOVERY_HEADER, Coordinator.coordinatorURL + lra.lraId)
                     .buildDelete().invoke();
             int responsestatus = response.getStatus();
-            logParticipantMessageWithTypeAndDepth("RestParticipant sendForget:" + getForgetURI() + " finished  response:" + response + ":" + responsestatus, lra.nestedDepth);
             if (responsestatus == 200 || responsestatus == 410) {
                 setForgotten();
             } else {
                 isForgotten = false;
             }
         } catch (Exception e) {
-            logParticipantMessageWithTypeAndDepth("RestParticipant sendForget Exception:" + e, lra.nestedDepth);
             isForgotten = false;
         }
         return isForgotten;
+    }
+    
+    boolean equalCompensatorUris(String compensatorUris){
+        Set<Link> links = Arrays.stream(compensatorUris.split(","))
+                .map(Link::valueOf)
+                .collect(Collectors.toSet());
+        
+        if(links.size() < 5){
+            return false;
+        }
+        
+        for(Link link : links){
+            String rel = link.getRel();
+            // TODO: store map of Links instead of fields
+            if (rel.equals("complete")) {
+                if(!Objects.equals(link.getUri(), getCompleteURI())){
+                    return false; 
+                }
+            }
+            if (rel.equals("compensate")) {
+                if(!Objects.equals(link.getUri(), getCompensateURI())){
+                    return false;
+                }
+            }
+            if (rel.equals("after")) {
+                if(!Objects.equals(link.getUri(), getAfterURI())){
+                    return false;
+                }
+            }
+            if (rel.equals("status")) {
+                if(!Objects.equals(link.getUri(), getStatusURI())){
+                    return false;
+                }
+            }
+            if (rel.equals("forget")) {
+                if(!Objects.equals(link.getUri(), getForgetURI())){
+                    return false;
+                }
+            }
+        }
+        
+        return true;
     }
 
 }

@@ -24,8 +24,7 @@ public class LraExtension implements LoadableExtension {
 
     @Override
     public void register(ExtensionBuilder extensionBuilder) {
-        extensionBuilder.override(ResourceProvider.class, URLResourceProvider.class,
-                CoordinatorURLResourceProvider.class);
+        extensionBuilder.override(ResourceProvider.class, URLResourceProvider.class, CoordinatorURLResourceProvider.class);
         extensionBuilder.observer(CoordinatorDeployer.class);
     }
 }

@@ -16,13 +16,11 @@
 package io.helidon.microprofile.lra.tck.coordinator;
 
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.logging.Logger;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import javax.xml.bind.annotation.XmlAccessType;
@@ -33,9 +31,7 @@ import javax.xml.bind.annotation.XmlIDREF;
 import javax.xml.bind.annotation.XmlRootElement;
 
 import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.Compensated;
-import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.Completed;
 import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.FailedToCompensate;
-import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.FailedToComplete;
 
 import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
 
@@ -69,7 +65,6 @@ public class LRA {
     boolean isParent;
     boolean isChild;
     boolean isNestedThatShouldBeForgottenAfterParentEnds = false;
-    public int nestedDepth;
     private boolean isProcessing;
     private long isReadyToDelete = 0;
 
@@ -104,53 +99,15 @@ public class LRA {
      * @param compensatorLink from REST or message header/property/value
      * @return debug string
      */
-    String addParticipant(String compensatorLink) {
+    public String addParticipant(String compensatorLink) {
         if (compensatorLinks.contains(compensatorLink)) {
             return "participant already enlisted"; //todo this should be correct/sufficient but need to test
-        } else {
-            compensatorLinks.add(compensatorLink);
         }
+        compensatorLinks.add(compensatorLink);
         Participant participant = new Participant();
-        String uriPrefix = "<http://";
+        participant.parseCompensatorLinks(compensatorLink);
         participants.add(participant);
-        String endpoint = "";
-        Pattern linkRelPattern = Pattern.compile("(\\w+)=\"([^\"]+)\"|([^\\s]+)");
-        Matcher relMatcher = linkRelPattern.matcher(compensatorLink);
-        while (relMatcher.find()) {
-            String group0 = relMatcher.group(0);
-            if (group0.contains(uriPrefix)) {
-                endpoint = group0.substring(group0.indexOf(uriPrefix) + 1, group0.indexOf(";") - 1);
-            }
-            String key = relMatcher.group(1);
-            if (key != null && key.equals("rel")) {
-                String rel = getConditionalStringValue(relMatcher.group(2) == null, relMatcher.group(3), relMatcher.group(2));
-                try {
-                    if (rel.equals("complete")) {
-                        participant.setCompleteURI(new URI(endpoint));
-                    }
-                    if (rel.equals("compensate")) {
-                        participant.setCompensateURI(new URI(endpoint));
-                    }
-                    if (rel.equals("after")) {
-                        participant.setAfterURI(new URI(endpoint));
-                    }
-                    if (rel.equals("status")) {
-                        participant.setStatusURI(new URI(endpoint));
-                        hasStatusEndpoints = true;
-                    }
-                    if (rel.equals("forget")) {
-                        participant.setForgetURI(new URI(endpoint));
-                    }
-                } catch (URISyntaxException e) {
-                    e.printStackTrace();
-                }
-            }
-        }
-        if (!participant.init()) {
-            throw new RuntimeException("unable to initialize participant:" + participant); //todo better exception/handling
-        }
-        return "LRA joined/added:" + (getConditionalStringValue(participant.isListenerOnly(), "listener:", "participant:")) + participant;
-
+        return "LRA joined/added:" + (participant.isListenerOnly() ? "listener:" : "participant:") + participant;
     }
 
     /**
@@ -231,20 +188,20 @@ public class LRA {
     }
 
     void trySendStatus() {
-        if(!hasStatusEndpoints()){
+        if (!hasStatusEndpoints()) {
             return;
         }
         for (Participant participant : participants) {
-            URI statusURI = participant.getStatusURI();
-            if (statusURI == null || participant.isInEndStateOrListenerOnly()) continue;
-            participant.sendStatus(this, statusURI);
+            Optional<URI> statusURI = participant.getStatusURI();
+            if (statusURI.isEmpty() || participant.isInEndStateOrListenerOnly()) continue;
+            participant.sendStatus(this, statusURI.get());
         }
     }
 
     boolean sendForget() { //todo could gate with isprocessing here as well
         boolean areAllThatNeedToBeForgottenForgotten = true;
         for (Participant participant : participants) {
-            if (participant.getForgetURI() == null || participant.isForgotten()) continue;
+            if (participant.getForgetURI().isEmpty() || participant.isForgotten()) continue;
             areAllThatNeedToBeForgottenForgotten = participant.sendForget(this);
         }
         return areAllThatNeedToBeForgottenForgotten;
@@ -263,7 +220,9 @@ public class LRA {
     }
 
     public boolean hasStatusEndpoints() {
-        return hasStatusEndpoints;
+        return participants.stream()
+                .map(Participant::getStatusURI)
+                .anyMatch(Optional::isPresent);
     }
 
     public String toString() {
@@ -310,9 +269,5 @@ public class LRA {
             if (!participant.isInEndStateOrListenerOnlyForTerminationType(isCompensate)) return false;
         }
         return true;
-    }
-
-    public String getConditionalStringValue(boolean isTrue, String first, String second) {
-        return isTrue ? first : second;
     }
 }

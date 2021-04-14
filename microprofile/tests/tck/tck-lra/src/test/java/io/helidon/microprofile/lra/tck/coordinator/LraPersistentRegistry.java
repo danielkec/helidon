@@ -8,6 +8,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.stream.Stream;
 
+import javax.ws.rs.core.Link;
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.JAXBException;
 import javax.xml.bind.Marshaller;
@@ -49,6 +50,7 @@ public class LraPersistentRegistry {
             if (Files.exists(registry)) {
                 JAXBContext context = JAXBContext.newInstance(LraPersistentRegistry.class, LRA.class, Participant.class);
                 Unmarshaller unmarshaller = context.createUnmarshaller();
+                unmarshaller.setAdapter(new Link.JaxbAdapter());
                 LraPersistentRegistry lraPersistentRegistry = (LraPersistentRegistry) unmarshaller.unmarshal(registry.toFile());
                 lraMap.putAll(lraPersistentRegistry.lraMap);
             }
@@ -69,6 +71,7 @@ public class LraPersistentRegistry {
         try {
             JAXBContext context = JAXBContext.newInstance(LraPersistentRegistry.class, LRA.class, Participant.class);
             Marshaller mar = context.createMarshaller();
+            mar.setAdapter(new Link.JaxbAdapter());
             mar.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, Boolean.TRUE);
             if (!Files.exists(registry.getParent())) Files.createDirectories(registry.getParent());
             Files.deleteIfExists(registry);

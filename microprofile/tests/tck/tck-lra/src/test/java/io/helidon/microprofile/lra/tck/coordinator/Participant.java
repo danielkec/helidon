@@ -16,12 +16,16 @@
 package io.helidon.microprofile.lra.tck.coordinator;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.ClientBuilder;
@@ -30,10 +34,10 @@ import javax.ws.rs.core.Link;
 import javax.ws.rs.core.Response;
 import javax.xml.bind.annotation.XmlAccessType;
 import javax.xml.bind.annotation.XmlAccessorType;
+import javax.xml.bind.annotation.XmlElement;
 import javax.xml.bind.annotation.XmlRootElement;
 import javax.xml.bind.annotation.XmlTransient;
-
-import io.helidon.common.configurable.ServerThreadPoolSupplier;
+import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 
 import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.Compensated;
 import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.Completed;
@@ -61,15 +65,25 @@ public class Participant {
     private boolean isAfterLRASuccessfullyCalledIfEnlisted;
     private boolean isForgotten;
     private ParticipantStatus participantStatus;
-    private URI completeURI; // a method to be executed when the LRA is closed 200, 202, 409, 410
-    private URI compensateURI; // a method to be executed when the LRA is cancelled 200, 202, 409, 410
-    private URI afterURI;  // a method that will be reliably invoked when the LRA enters one of the final states 200
-    private URI forgetURI; // a method to be executed when the LRA allows participant to clear all associated information 200, 410
-    private URI statusURI; // a method that allow user to state status of the participant with regards to a particular LRA 200, 202, 410
+//    private URI completeURI; // a method to be executed when the LRA is closed 200, 202, 409, 410
+//    private URI compensateURI; // a method to be executed when the LRA is cancelled 200, 202, 409, 410
+//    private URI afterURI;  // a method that will be reliably invoked when the LRA enters one of the final states 200
+//    private URI forgetURI; // a method to be executed when the LRA allows participant to clear all associated information 200, 410
+//    private URI statusURI; // a method that allow user to state status of the participant with regards to a particular LRA 200, 202, 410
+
+    @XmlElement
+    @XmlJavaTypeAdapter(Link.JaxbAdapter.class)
+    private final List<Link> compensatorLinks = new ArrayList<>(5);
     
     @XmlTransient
-    private Client client = ClientBuilder.newBuilder().build();
+    private final Client client = ClientBuilder.newBuilder().build();
 
+    void parseCompensatorLinks(String compensatorLinks){
+        Stream.of(compensatorLinks.split(","))
+                .map(Link::valueOf)
+                .forEach(this.compensatorLinks::add);
+    }
+    
     ParticipantStatus getParticipantStatus() {
         return participantStatus;
     }
@@ -79,44 +93,28 @@ public class Participant {
         this.participantStatus = participantStatus;
     }
 
-    public URI getCompleteURI() {
-        return completeURI;
+    public Optional<Link> getCompensatorLink(String rel){
+        return compensatorLinks.stream().filter(l -> rel.equals(l.getRel())).findFirst();
+    }
+    
+    public Optional<URI> getCompleteURI() {
+        return getCompensatorLink("complete").map(Link::getUri);
     }
 
-    void setCompleteURI(URI completeURI) {
-        this.completeURI = completeURI;
+    public Optional<URI> getCompensateURI() {
+        return getCompensatorLink("compensate").map(Link::getUri);
     }
 
-    public URI getCompensateURI() {
-        return compensateURI;
+    public Optional<URI> getAfterURI() {
+        return getCompensatorLink("after").map(Link::getUri);
     }
 
-    void setCompensateURI(URI compensateURI) {
-        this.compensateURI = compensateURI;
+    public Optional<URI> getForgetURI() {
+        return getCompensatorLink("forget").map(Link::getUri);
     }
 
-    public URI getAfterURI() {
-        return afterURI;
-    }
-
-    void setAfterURI(URI afterURI) {
-        this.afterURI = afterURI;
-    }
-
-    public URI getForgetURI() {
-        return forgetURI;
-    }
-
-    void setForgetURI(URI forgetURI) {
-        this.forgetURI = forgetURI;
-    }
-
-    URI getStatusURI() {
-        return statusURI;
-    }
-
-    void setStatusURI(URI statusURI) {
-        this.statusURI = statusURI;
+    public Optional<URI> getStatusURI() {
+        return getCompensatorLink("status").map(Link::getUri);
     }
 
     protected void setForgotten() {
@@ -132,21 +130,21 @@ public class Participant {
     }
 
     public boolean isAfterLRASuccessfullyCalledIfEnlisted() {
-        return isAfterLRASuccessfullyCalledIfEnlisted || afterURI == null;
+        return isAfterLRASuccessfullyCalledIfEnlisted || getAfterURI().isEmpty();
     }
 
     //A listener is a participant with afterURI endpoint. It may not have a complete or compensate endpoint.
     boolean isListenerOnly() {
-        return completeURI == null && compensateURI == null;
+        return getCompleteURI().isEmpty() && getCompensateURI().isEmpty();
     }
 
     public String toString() {
         return "ParticipantStatus:" + participantStatus +
-                "\n completeURI:" + completeURI +
-                "\n compensateURI:" + compensateURI +
-                "\n afterURI:" + afterURI +
-                "\n forgetURI:" + forgetURI +
-                "\n statusURI:" + statusURI;
+                "\n completeURI:" + getCompleteURI() +
+                "\n compensateURI:" + getCompensateURI() +
+                "\n afterURI:" + getAfterURI() +
+                "\n forgetURI:" + getForgetURI() +
+                "\n statusURI:" + getStatusURI();
     }
 
     public boolean isInEndStateOrListenerOnly() {
@@ -168,31 +166,20 @@ public class Participant {
                     isListenerOnly();
         }
     }
-
-    public boolean init() {
-        return true;
-    }
-
+    
     void sendCompleteOrCancel(LRA lra, boolean isCancel) {
-        URI endpointURI = isCancel ? getCompensateURI() : getCompleteURI();
+        Optional<URI> endpointURI = isCancel ? getCompensateURI() : getCompleteURI();
         try {
-            Response response = sendCompleteOrCompensate(lra, endpointURI, isCancel);
+            Response response = sendCompleteOrCompensate(lra, endpointURI.get(), isCancel);
             int responsestatus = response.getStatus(); // expected codes 200, 202, 409, 410
-            if (responsestatus == 503) { //  Service Unavailable, retriable - todo this should be the full range of invalid/retriable values
-                lra.isRecovering = true;
-            } else if (responsestatus == 409) { //conflict, retriable
-                lra.isRecovering = true;
-            } else if (responsestatus == 202) { //accepted
-                lra.isRecovering = true;
-            } else if (responsestatus == 404) {
-                lra.isRecovering = true;
-            } else if (responsestatus == 200 || responsestatus == 410) { // successful or gone (where presumption is complete or compensated)
+            if (responsestatus == 200 || responsestatus == 410) { // successful or gone (where presumption is complete or compensated)
                 setParticipantStatus(isCancel ? Compensated : Completed);
             } else {
                 lra.isRecovering = true;
             }
-        } catch (Exception e) { // Exception:javax.ws.rs.ProcessingException: java.net.ConnectException: Connection refused (Connection refused)
+        } catch (Exception e) {
             lra.isRecovering = true;
+            LOGGER.log(Level.SEVERE, "Error when completing/canceling", e);
         }
     }
 
@@ -203,38 +190,37 @@ public class Participant {
                 .header(LRA_HTTP_ENDED_CONTEXT_HEADER, Coordinator.coordinatorURL + lra.lraId)
                 .header(LRA_HTTP_PARENT_CONTEXT_HEADER, lra.parentId)
                 .header(LRA_HTTP_RECOVERY_HEADER, Coordinator.coordinatorURL + lra.lraId)
-                .buildPut(Entity.text(lra.getConditionalStringValue(isCompensate, LRAStatus.Cancelled.name(), LRAStatus.Closed.name()))).invoke();
-        //                       .buildPut(Entity.json("")).invoke();
-        //                       .async().put(Entity.json("entity"));
+                .buildPut(Entity.text(isCompensate ? LRAStatus.Cancelled.name() : LRAStatus.Closed.name()))
+                .invoke();
     }
 
     public void sendAfterLRA(LRA lra) {
         try {
-            URI afterURI = getAfterURI();
-            if (afterURI != null) {
+            Optional<URI> afterURI = getAfterURI();
+            if (afterURI.isPresent()) {
                 if (isAfterLRASuccessfullyCalledIfEnlisted()) return;
-                Response response = client.target(afterURI)
+                Response response = client.target(afterURI.get())
                         .request()
                         .header(LRA_HTTP_CONTEXT_HEADER, Coordinator.coordinatorURL + lra.lraId)
                         .header(LRA_HTTP_ENDED_CONTEXT_HEADER, Coordinator.coordinatorURL + lra.lraId)
                         .header(LRA_HTTP_PARENT_CONTEXT_HEADER, lra.parentId)
                         .header(LRA_HTTP_RECOVERY_HEADER, Coordinator.coordinatorURL + lra.lraId)
-                        .buildPut(Entity.text(lra.getConditionalStringValue(lra.isCancel, LRAStatus.Cancelled.name(), LRAStatus.Closed.name())))
+                        .buildPut(Entity.text(lra.isCancel ? LRAStatus.Cancelled.name() : LRAStatus.Closed.name()))
                         .invoke();
-                int responsestatus = response.getStatus();
-                if (responsestatus == 200) setAfterLRASuccessfullyCalledIfEnlisted();
+                int responseStatus = response.getStatus();
+                if (responseStatus == 200) setAfterLRASuccessfullyCalledIfEnlisted();
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            LOGGER.log(Level.SEVERE, "Error when sending after lra", e);
         }
     }
 
 
     public void sendStatus(LRA lra, URI statusURI) {
-        Response response = null;
-        int responsestatus = -1;
-        String readEntity = null;
-        ParticipantStatus participantStatus = null;
+        Response response;
+        int responseStatus;
+        String readEntity;
+        ParticipantStatus participantStatus;
         try {
             response = client.target(statusURI)
                     .request()
@@ -243,9 +229,9 @@ public class Participant {
                     .header(LRA_HTTP_PARENT_CONTEXT_HEADER, lra.parentId)
                     .header(LRA_HTTP_RECOVERY_HEADER, Coordinator.coordinatorURL + lra.lraId)
                     .buildGet().invoke();
-            responsestatus = response.getStatus();
-            if (responsestatus == 503 || responsestatus == 202) { //todo include other retriables
-            } else if (responsestatus != 410) {
+            responseStatus = response.getStatus();
+            if (responseStatus == 503 || responseStatus == 202) { //todo include other retriables
+            } else if (responseStatus != 410) {
                 readEntity = response.readEntity(String.class);
                 participantStatus = ParticipantStatus.valueOf(readEntity);
                 setParticipantStatus(participantStatus);
@@ -260,7 +246,7 @@ public class Participant {
     public boolean sendForget(LRA lra) {
         boolean isForgotten = true;
         try {
-            Response response = client.target(getForgetURI())
+            Response response = client.target(getForgetURI().get())
                     .request()
                     .header(LRA_HTTP_CONTEXT_HEADER, Coordinator.coordinatorURL + lra.lraId)
                     .header(LRA_HTTP_ENDED_CONTEXT_HEADER, Coordinator.coordinatorURL + lra.lraId)
@@ -278,47 +264,24 @@ public class Participant {
         }
         return isForgotten;
     }
-    
-    boolean equalCompensatorUris(String compensatorUris){
+
+    boolean equalCompensatorUris(String compensatorUris) {
         Set<Link> links = Arrays.stream(compensatorUris.split(","))
                 .map(Link::valueOf)
                 .collect(Collectors.toSet());
-        
-        if(links.size() < 5){
-            return false;
-        }
-        
-        for(Link link : links){
-            String rel = link.getRel();
-            // TODO: store map of Links instead of fields
-            if (rel.equals("complete")) {
-                if(!Objects.equals(link.getUri(), getCompleteURI())){
-                    return false; 
-                }
+
+        for (Link link : links) {
+            Optional<Link> participantsLink = getCompensatorLink(link.getRel());
+            if(participantsLink.isEmpty()){
+                continue;
             }
-            if (rel.equals("compensate")) {
-                if(!Objects.equals(link.getUri(), getCompensateURI())){
-                    return false;
-                }
-            }
-            if (rel.equals("after")) {
-                if(!Objects.equals(link.getUri(), getAfterURI())){
-                    return false;
-                }
-            }
-            if (rel.equals("status")) {
-                if(!Objects.equals(link.getUri(), getStatusURI())){
-                    return false;
-                }
-            }
-            if (rel.equals("forget")) {
-                if(!Objects.equals(link.getUri(), getForgetURI())){
-                    return false;
-                }
+            
+            if(Objects.equals(participantsLink.get().getUri(), link.getUri())){
+                return true;
             }
         }
-        
-        return true;
+
+        return false;
     }
 
 }

@@ -17,12 +17,14 @@ package io.helidon.microprofile.lra.tck.coordinator;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
+import javax.ws.rs.core.MultivaluedHashMap;
+import javax.ws.rs.core.MultivaluedMap;
 import javax.xml.bind.annotation.XmlAccessType;
 import javax.xml.bind.annotation.XmlAccessorType;
 import javax.xml.bind.annotation.XmlElement;
@@ -32,6 +34,10 @@ import javax.xml.bind.annotation.XmlRootElement;
 
 import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.Compensated;
 import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.FailedToCompensate;
+import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
+import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_ENDED_CONTEXT_HEADER;
+import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_PARENT_CONTEXT_HEADER;
+import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVERY_HEADER;
 
 import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
 
@@ -39,25 +45,17 @@ import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
 @XmlAccessorType(XmlAccessType.FIELD)
 public class LRA {
 
-    /**
-     * LRA state model....
-     * Active -----------------------------------------------------------------> Cancelling --> FailedToCancel
-     * --> Closing --> FailedToClose                                     /                  --> Cancelled
-     * --> Closed --> (only if nested can go to cancelling) /
-     */
-    private static final Logger LOGGER = Logger.getLogger(LRA.class.getName());
     private long timeout;
     @XmlID
     public String lraId;
     public URI parentId;
-    List<String> compensatorLinks = new ArrayList<>();
+    Set<String> compensatorLinks = new HashSet<>();
     @XmlIDREF
     LRA parent;
     @XmlIDREF
     List<LRA> children = new ArrayList<>();
     @XmlElement
     List<Participant> participants = new ArrayList<>();
-    boolean hasStatusEndpoints; //todo remove as this is check at participant level
 
     public boolean isRecovering = false;
     public boolean isCancel;
@@ -66,7 +64,7 @@ public class LRA {
     boolean isChild;
     boolean isNestedThatShouldBeForgottenAfterParentEnds = false;
     private boolean isProcessing;
-    private long isReadyToDelete = 0;
+    private long whenReadyToDelete = 0;
 
     public LRA(String lraUUID) {
         lraId = lraUUID;
@@ -99,15 +97,12 @@ public class LRA {
      * @param compensatorLink from REST or message header/property/value
      * @return debug string
      */
-    public String addParticipant(String compensatorLink) {
-        if (compensatorLinks.contains(compensatorLink)) {
-            return "participant already enlisted"; //todo this should be correct/sufficient but need to test
+    public void addParticipant(String compensatorLink) {
+        if (compensatorLinks.add(compensatorLink)) {
+            Participant participant = new Participant();
+            participant.parseCompensatorLinks(compensatorLink);
+            participants.add(participant);
         }
-        compensatorLinks.add(compensatorLink);
-        Participant participant = new Participant();
-        participant.parseCompensatorLinks(compensatorLink);
-        participants.add(participant);
-        return "LRA joined/added:" + (participant.isListenerOnly() ? "listener:" : "participant:") + participant;
     }
 
     /**
@@ -134,6 +129,16 @@ public class LRA {
         isParent = true;
     }
 
+    public MultivaluedMap<String, Object> headers() {
+        String coordinatorLraUrl = Coordinator.coordinatorURL + lraId;
+        MultivaluedMap<String, Object> multivaluedMap = new MultivaluedHashMap<>(4);
+        multivaluedMap.add(LRA_HTTP_CONTEXT_HEADER, coordinatorLraUrl);
+        multivaluedMap.add(LRA_HTTP_ENDED_CONTEXT_HEADER, coordinatorLraUrl);
+        multivaluedMap.add(LRA_HTTP_PARENT_CONTEXT_HEADER, parentId);
+        multivaluedMap.add(LRA_HTTP_RECOVERY_HEADER, coordinatorLraUrl);
+        return multivaluedMap;
+    }
+
     void terminate(boolean isCancel, boolean isUnilateralCallIfNested) {
         setProcessing(true);
         this.isCancel = isCancel;
@@ -153,20 +158,19 @@ public class LRA {
         if (areAllInEndState() && areAllAfterLRASuccessfullyCalledOrForgotten()) {
             if (forgetAnyUnilaterallyCompleted()) {
                 // keep terminated for 5 minutes before deletion
-                isReadyToDelete = System.currentTimeMillis() + 5 * 1000 * 60;
+                whenReadyToDelete = System.currentTimeMillis() + 5 * 1000 * 60;
             }
         }
         setProcessing(false);
     }
 
     public boolean forgetAnyUnilaterallyCompleted() {
-        boolean isAllThatNeedsToBeForgotten = true;
         for (LRA nestedLRA : children) {
             if (nestedLRA.isNestedThatShouldBeForgottenAfterParentEnds) {
                 if (!nestedLRA.sendForget()) return false;
             }
         }
-        return isAllThatNeedsToBeForgotten;
+        return true;
     }
 
     private void sendCompleteOrCancel(boolean isCancel) {
@@ -199,12 +203,12 @@ public class LRA {
     }
 
     boolean sendForget() { //todo could gate with isprocessing here as well
-        boolean areAllThatNeedToBeForgottenForgotten = true;
+        boolean areAllThatNeedToBeForgotten = true;
         for (Participant participant : participants) {
             if (participant.getForgetURI().isEmpty() || participant.isForgotten()) continue;
-            areAllThatNeedToBeForgottenForgotten = participant.sendForget(this);
+            areAllThatNeedToBeForgotten = participant.sendForget(this);
         }
-        return areAllThatNeedToBeForgottenForgotten;
+        return areAllThatNeedToBeForgotten;
     }
 
     public void setProcessing(boolean isProcessing) {
@@ -216,19 +220,13 @@ public class LRA {
     }
 
     public boolean isReadyToDelete() {
-        return isReadyToDelete != 0 && isReadyToDelete < System.currentTimeMillis();
+        return whenReadyToDelete != 0 && whenReadyToDelete < System.currentTimeMillis();
     }
 
     public boolean hasStatusEndpoints() {
         return participants.stream()
                 .map(Participant::getStatusURI)
                 .anyMatch(Optional::isPresent);
-    }
-
-    public String toString() {
-        StringBuilder participantsString = new StringBuilder();
-        for (Participant participant : participants) participantsString.append(participant);
-        return "lraId:" + lraId + " participants' status:" + participantsString;
     }
 
     public boolean areAnyInFailedState() {

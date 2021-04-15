@@ -18,7 +18,9 @@ package io.helidon.microprofile.lra.tck.coordinator;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.context.BeforeDestroyed;
@@ -37,6 +39,7 @@ import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
+import io.helidon.common.reactive.Single;
 import io.helidon.microprofile.scheduling.FixedRate;
 
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
@@ -154,7 +157,7 @@ public class Coordinator {
         }
     }
 
-    @FixedRate(value = 100, timeUnit = TimeUnit.MILLISECONDS)
+    @FixedRate(value = 500, timeUnit = TimeUnit.MILLISECONDS)
     public void run() {
         lraPersistentRegistry.stream().forEach(lra -> {
             if (!lra.isProcessing()) {
@@ -165,8 +168,17 @@ public class Coordinator {
                 }
             }
         });
+        completedRecovery.getAndSet(new CompletableFuture<>()).complete(null);
     }
 
+    static AtomicReference<CompletableFuture<Void>> completedRecovery = new AtomicReference<>(new CompletableFuture<>());
+
+    public static Single<Void> nextRecoveryCycle(){
+        return Single.create(completedRecovery.get(), true)
+                //wait for the second one, as first could have been in progress
+                .onCompleteResumeWith(Single.create(completedRecovery.get(), true))
+                .ignoreElements();
+    }
     private void doRun(LRA lra) {
         String uri = lra.lraId;
         if (lra.isRecovering) {

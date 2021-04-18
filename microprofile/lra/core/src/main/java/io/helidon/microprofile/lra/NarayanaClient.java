@@ -23,6 +23,8 @@ import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 import javax.enterprise.context.ApplicationScoped;
@@ -48,6 +50,8 @@ public class NarayanaClient implements CoordinatorClient {
 
     private final String coordinatorUrl = "http://localhost:8070/lra-coordinator";
 
+    private static final Logger LOGGER = Logger.getLogger(NarayanaClient.class.getName());
+
     public NarayanaClient() {
 
     }
@@ -68,6 +72,7 @@ public class NarayanaClient implements CoordinatorClient {
                     .post(null)
                     .get(10, TimeUnit.SECONDS);
             if (response.getStatus() != 201) {
+                LOGGER.log(Level.SEVERE, "Unexpected response from coordinator. " + response.getStatusInfo().getReasonPhrase());
                 throw new WebApplicationException("Unexpected response " + response.getStatus() + " from coordinator "
                         + (response.hasEntity() ? response.readEntity(String.class) : ""));
             }
@@ -110,20 +115,16 @@ public class NarayanaClient implements CoordinatorClient {
     @Override
     public URI join(URI lraId,
                     Long timeLimit,
-                    URI compensate,
-                    URI complete,
-                    URI forget,
-                    URI leave,
-                    URI after,
-                    URI status,
-                    String compensatorData) throws WebApplicationException {
+                    Participant participant) throws WebApplicationException {
         try {
-            String links = Map.of("compensate", Optional.ofNullable(compensate),
-                    "complete", Optional.ofNullable(complete),
-                    "forget", Optional.ofNullable(forget),
-                    "leave", Optional.ofNullable(leave),
-                    "after", Optional.ofNullable(after),
-                    "status", Optional.ofNullable(status))
+            String links = Map.of(
+                    "compensate", participant.compensate(),
+                    "complete", participant.complete(),
+                    "forget", participant.forget(),
+                    "leave", participant.leave(),
+                    "after", participant.after(),
+                    "status", participant.status()
+            )
                     .entrySet()
                     .stream()
                     .filter(e -> e.getValue().isPresent())
@@ -169,7 +170,7 @@ public class NarayanaClient implements CoordinatorClient {
     }
 
     @Override
-    public URI join(final URI lraId, final Long timeLimit, final URI participant, final String compensatorData) throws
+    public URI join(final URI lraId, final Long timeLimit, final URI participant) throws
             WebApplicationException {
         throw new RuntimeException("Not implemented yet!!!");
     }
@@ -180,7 +181,29 @@ public class NarayanaClient implements CoordinatorClient {
     }
 
     @Override
-    public LRAStatus getStatus(final URI uri) throws WebApplicationException {
-        throw new RuntimeException("Not implemented yet!!!");
+    public LRAStatus status(final URI lraId) throws WebApplicationException {
+        try {
+            Response response = ClientBuilder.newClient()
+                    .target(coordinatorUrl)
+                    .path(lraId.toASCIIString())
+                    .path("status")
+                    .request()
+                    .async()
+                    .get()
+                    .get(10, TimeUnit.SECONDS);
+
+            switch (response.getStatus()) {
+                case 404:
+                    throw new NotFoundException("NOTFOUND", Response.status(NOT_FOUND).entity(lraId.toASCIIString()).build());
+                case 200:
+                case 202:
+                    return response.readEntity(LRAStatus.class);
+                default:
+                    throw new IllegalStateException("Unexpected coordinator response " + response.getStatus());
+            }
+
+        } catch (InterruptedException | ExecutionException | TimeoutException | IllegalStateException e) {
+            throw new WebApplicationException("Unable to retrieve status of LRA " + lraId, e);
+        }
     }
 }

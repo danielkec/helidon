@@ -28,11 +28,8 @@ public interface CoordinatorClient {
     URI start(URI parentLRA, String clientID, Long timeout) throws WebApplicationException;
     void cancel(URI lraId) throws WebApplicationException;
     void close(URI lraId) throws WebApplicationException;
-    URI join(URI lraId, 
-                Long timeLimit,
-                URI compensate, URI complete, URI forget, URI leave, URI after, URI status,
-                String compensatorData) throws WebApplicationException;
-    URI join(URI lraId, Long timeLimit, URI participant, String compensatorData) throws WebApplicationException;
+    URI join(URI lraId, Long timeLimit, Participant participant) throws WebApplicationException;
+    URI join(URI lraId, Long timeLimit, URI participant) throws WebApplicationException;
     void leave(URI lraId, String body) throws WebApplicationException;
-    LRAStatus getStatus(URI uri) throws WebApplicationException;
+    LRAStatus status(URI uri) throws WebApplicationException;
 }

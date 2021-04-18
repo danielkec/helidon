@@ -33,7 +33,7 @@
         <dependency>
             <groupId>org.eclipse.microprofile.lra</groupId>
             <artifactId>microprofile-lra-api</artifactId>
-            <version>1.0-RC2</version>
+            <version>1.0-RC3</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
@@ -45,8 +45,18 @@
             <artifactId>helidon-microprofile-server</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.helidon.common</groupId>
+            <artifactId>helidon-common-reactive</artifactId>
+        </dependency>
+        <dependency>
             <groupId>io.helidon.jersey</groupId>
             <artifactId>helidon-jersey-client</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.helidon.microprofile.lra</groupId>
+            <artifactId>helidon-microprofile-lra-coordinator</artifactId>
+            <scope>test</scope>
+            <version>2.3.0-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>io.helidon.microprofile.tests</groupId>

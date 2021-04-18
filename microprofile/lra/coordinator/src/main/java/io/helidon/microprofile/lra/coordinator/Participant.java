@@ -12,8 +12,9 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
  */
-package io.helidon.microprofile.lra.tck.coordinator;
+package io.helidon.microprofile.lra.coordinator;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -39,18 +40,13 @@ import javax.xml.bind.annotation.XmlRootElement;
 import javax.xml.bind.annotation.XmlTransient;
 import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 
-import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.Compensated;
-import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.Completed;
-import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.FailedToCompensate;
-import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.FailedToComplete;
-
 import org.eclipse.microprofile.lra.annotation.LRAStatus;
 import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
 
 @XmlRootElement
 @XmlAccessorType(XmlAccessType.FIELD)
 public class Participant {
-    
+
     private static final Logger LOGGER = Logger.getLogger(Participant.class.getName());
     private boolean isAfterLRASuccessfullyCalledIfEnlisted;
     private boolean isForgotten;
@@ -65,6 +61,7 @@ public class Participant {
 
     void parseCompensatorLinks(String compensatorLinks) {
         Stream.of(compensatorLinks.split(","))
+                .filter(s -> !s.isBlank())
                 .map(Link::valueOf)
                 .forEach(this.compensatorLinks::add);
     }
@@ -140,26 +137,26 @@ public class Participant {
     }
 
     public boolean isInEndStateOrListenerOnly() {
-        return participantStatus == FailedToComplete ||
-                participantStatus == FailedToCompensate ||
-                participantStatus == Completed ||
-                participantStatus == Compensated ||
+        return participantStatus == ParticipantStatus.FailedToComplete ||
+                participantStatus == ParticipantStatus.FailedToCompensate ||
+                participantStatus == ParticipantStatus.Completed ||
+                participantStatus == ParticipantStatus.Compensated ||
                 isListenerOnly();
     }
 
     public boolean isInEndStateOrListenerOnlyForTerminationType(boolean isCompensate) {
         if (isCompensate) {
-            return participantStatus == FailedToCompensate ||
-                    participantStatus == Compensated ||
+            return participantStatus == ParticipantStatus.FailedToCompensate ||
+                    participantStatus == ParticipantStatus.Compensated ||
                     isListenerOnly();
         } else {
-            return participantStatus == FailedToComplete ||
-                    participantStatus == Completed ||
+            return participantStatus == ParticipantStatus.FailedToComplete ||
+                    participantStatus == ParticipantStatus.Completed ||
                     isListenerOnly();
         }
     }
 
-    void sendCompleteOrCancel(LRA lra, boolean isCancel) {
+    boolean sendCompleteOrCancel(LRA lra, boolean isCancel) {
         Optional<URI> endpointURI = isCancel ? getCompensateURI() : getCompleteURI();
         try {
             Response response = sendCompleteOrCompensate(lra, endpointURI.get(), isCancel);
@@ -168,8 +165,8 @@ public class Participant {
                 // complete or compensated
                 case 200:
                 case 410:
-                    setParticipantStatus(isCancel ? Compensated : Completed);
-                    break;
+                    setParticipantStatus(isCancel ? ParticipantStatus.Compensated : ParticipantStatus.Completed);
+                    return true;
 
                 // retryable
                 case 409:
@@ -184,6 +181,7 @@ public class Participant {
             lra.isRecovering = true;
             LOGGER.log(Level.SEVERE, "Error when completing/canceling", e);
         }
+        return false;
     }
 
     private Response sendCompleteOrCompensate(LRA lra, URI endpointURI, boolean isCompensate) {
@@ -230,7 +228,7 @@ public class Participant {
                 participantStatus = ParticipantStatus.valueOf(readEntity);
                 setParticipantStatus(participantStatus);
             } else {
-                setParticipantStatus(lra.isCancel ? Compensated : Completed); // not exactly accurate as it's GONE not explicitly completed or compensated
+                setParticipantStatus(lra.isCancel ? ParticipantStatus.Compensated : ParticipantStatus.Completed); // not exactly accurate as it's GONE not explicitly completed or compensated
             }
         } catch (Exception e) { // IllegalArgumentException: No enum constant org.eclipse.microprofile.lra.annotation.ParticipantStatus.
             LOGGER.log(Level.SEVERE, "Error when sending status.", e);

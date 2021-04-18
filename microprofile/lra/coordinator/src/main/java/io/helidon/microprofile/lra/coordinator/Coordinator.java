@@ -12,8 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
  */
-package io.helidon.microprofile.lra.tck.coordinator;
+package io.helidon.microprofile.lra.coordinator;
+
+import org.eclipse.microprofile.lra.annotation.LRAStatus;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -21,12 +24,15 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.context.BeforeDestroyed;
 import javax.enterprise.context.Initialized;
 import javax.enterprise.event.Observes;
 import javax.ws.rs.DefaultValue;
+import javax.ws.rs.GET;
 import javax.ws.rs.HeaderParam;
 import javax.ws.rs.NotFoundException;
 import javax.ws.rs.POST;
@@ -36,6 +42,7 @@ import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
 import javax.ws.rs.WebApplicationException;
+import javax.ws.rs.client.Entity;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
@@ -53,6 +60,8 @@ public class Coordinator {
     public static final String TIMELIMIT_PARAM_NAME = "TimeLimit";
     public static final String PARENT_LRA_PARAM_NAME = "ParentLRA";
 
+    private static final Logger LOGGER = Logger.getLogger(Coordinator.class.getName());
+
     LraPersistentRegistry lraPersistentRegistry = new LraPersistentRegistry();
     static String coordinatorURL = "http://localhost:8070/lra-coordinator/";
 
@@ -63,7 +72,7 @@ public class Coordinator {
     private void whenApplicationTerminates(@Observes @BeforeDestroyed(ApplicationScoped.class) final Object event) {
         lraPersistentRegistry.save();
     }
-    
+
     @POST
     @Path("start")
     @Produces(MediaType.TEXT_PLAIN)
@@ -153,8 +162,25 @@ public class Coordinator {
                     .header(LRA_HTTP_RECOVERY_HEADER, recoveryUrl)
                     .build();
         } catch (URISyntaxException e) {
+            LOGGER.log(Level.SEVERE, "Error when joining LRA " + lraIdParam, e);
             throw new RuntimeException(e);
         }
+    }
+
+
+    @GET
+    @Path("{LraId}/status")
+    @Produces(MediaType.TEXT_PLAIN)
+    public Response getStatus(@PathParam("LraId") String lraId) {
+        LRA lra = lraPersistentRegistry.get(lraId);
+        if (lra == null) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .build();
+        }
+
+        return Response.ok()
+                .entity(lra.status().get().name())
+                .build();
     }
 
     @FixedRate(value = 500, timeUnit = TimeUnit.MILLISECONDS)
@@ -173,12 +199,13 @@ public class Coordinator {
 
     static AtomicReference<CompletableFuture<Void>> completedRecovery = new AtomicReference<>(new CompletableFuture<>());
 
-    public static Single<Void> nextRecoveryCycle(){
+    public static Single<Void> nextRecoveryCycle() {
         return Single.create(completedRecovery.get(), true)
                 //wait for the second one, as first could have been in progress
                 .onCompleteResumeWith(Single.create(completedRecovery.get(), true))
                 .ignoreElements();
     }
+
     private void doRun(LRA lra) {
         String uri = lra.lraId;
         if (lra.isRecovering) {

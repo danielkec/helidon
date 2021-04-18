@@ -19,9 +19,9 @@ package io.helidon.microprofile.lra.tck;
 import java.net.URI;
 import java.util.concurrent.TimeUnit;
 
-import org.eclipse.microprofile.lra.tck.service.spi.LRARecoveryService;
+import io.helidon.microprofile.lra.coordinator.Coordinator;
 
-import io.helidon.microprofile.lra.tck.coordinator.Coordinator;
+import org.eclipse.microprofile.lra.tck.service.spi.LRARecoveryService;
 
 public class HelidonLRARecoveryService implements LRARecoveryService {
 

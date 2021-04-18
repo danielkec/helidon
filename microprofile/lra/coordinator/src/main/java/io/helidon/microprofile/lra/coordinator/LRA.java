@@ -12,8 +12,9 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
  */
-package io.helidon.microprofile.lra.tck.coordinator;
+package io.helidon.microprofile.lra.coordinator;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -21,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import javax.ws.rs.core.MultivaluedHashMap;
@@ -32,13 +34,12 @@ import javax.xml.bind.annotation.XmlID;
 import javax.xml.bind.annotation.XmlIDREF;
 import javax.xml.bind.annotation.XmlRootElement;
 
-import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.Compensated;
-import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.FailedToCompensate;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_ENDED_CONTEXT_HEADER;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_PARENT_CONTEXT_HEADER;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVERY_HEADER;
 
+import org.eclipse.microprofile.lra.annotation.LRAStatus;
 import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
 
 @XmlRootElement
@@ -56,6 +57,8 @@ public class LRA {
     List<LRA> children = new ArrayList<>();
     @XmlElement
     List<Participant> participants = new ArrayList<>();
+
+    private AtomicReference<LRAStatus> status = new AtomicReference<>(LRAStatus.Active);
 
     public boolean isRecovering = false;
     public boolean isCancel;
@@ -130,17 +133,18 @@ public class LRA {
     }
 
     public MultivaluedMap<String, Object> headers() {
-        String coordinatorLraUrl = Coordinator.coordinatorURL + lraId;
+        //String coordinatorLraUrl = Coordinator.coordinatorURL + lraId;
         MultivaluedMap<String, Object> multivaluedMap = new MultivaluedHashMap<>(4);
-        multivaluedMap.add(LRA_HTTP_CONTEXT_HEADER, coordinatorLraUrl);
-        multivaluedMap.add(LRA_HTTP_ENDED_CONTEXT_HEADER, coordinatorLraUrl);
+        multivaluedMap.add(LRA_HTTP_CONTEXT_HEADER, lraId);
+        multivaluedMap.add(LRA_HTTP_ENDED_CONTEXT_HEADER, lraId);
         multivaluedMap.add(LRA_HTTP_PARENT_CONTEXT_HEADER, parentId);
-        multivaluedMap.add(LRA_HTTP_RECOVERY_HEADER, coordinatorLraUrl);
+        multivaluedMap.add(LRA_HTTP_RECOVERY_HEADER, lraId);
         return multivaluedMap;
     }
 
     void terminate(boolean isCancel, boolean isUnilateralCallIfNested) {
         setProcessing(true);
+        status.updateAndGet(unused -> isCancel ? LRAStatus.Cancelling : LRAStatus.Closing);
         this.isCancel = isCancel;
         if (isUnilateralCallIfNested && isChild && !isCancel) isNestedThatShouldBeForgottenAfterParentEnds = true;
         if (isChild && !isCancel && areAllInEndStateCompensatedOrFailedToCompensate()) {
@@ -157,6 +161,7 @@ public class LRA {
         sendAfterLRA();
         if (areAllInEndState() && areAllAfterLRASuccessfullyCalledOrForgotten()) {
             if (forgetAnyUnilaterallyCompleted()) {
+                status.updateAndGet(unused -> isCancel ? LRAStatus.Cancelled : LRAStatus.Closed);
                 // keep terminated for 5 minutes before deletion
                 whenReadyToDelete = System.currentTimeMillis() + 5 * 1000 * 60;
             }
@@ -171,6 +176,9 @@ public class LRA {
             }
         }
         return true;
+    }
+    public AtomicReference<LRAStatus> status() {
+        return status;
     }
 
     private void sendCompleteOrCancel(boolean isCancel) {
@@ -232,7 +240,7 @@ public class LRA {
     public boolean areAnyInFailedState() {
         for (Participant participant : participants) {
             if (participant.getParticipantStatus() == ParticipantStatus.FailedToComplete ||
-                    participant.getParticipantStatus() == FailedToCompensate) {
+                    participant.getParticipantStatus() == ParticipantStatus.FailedToCompensate) {
                 return true;
             }
         }
@@ -255,7 +263,7 @@ public class LRA {
 
     public boolean areAllInEndStateCompensatedOrFailedToCompensate() {
         for (Participant participant : participants) {
-            if (participant.getParticipantStatus() != Compensated && participant.getParticipantStatus() != FailedToCompensate) {
+            if (participant.getParticipantStatus() != ParticipantStatus.Compensated && participant.getParticipantStatus() != ParticipantStatus.FailedToCompensate) {
                 return false;
             }
         }

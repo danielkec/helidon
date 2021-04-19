@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 import javax.ws.rs.core.MultivaluedHashMap;
@@ -46,6 +47,8 @@ import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
 @XmlAccessorType(XmlAccessType.FIELD)
 public class LRA {
 
+    private static final Logger LOGGER = Logger.getLogger(LRA.class.getName());
+
     private long timeout;
     @XmlID
     public String lraId;
@@ -60,7 +63,6 @@ public class LRA {
 
     private AtomicReference<LRAStatus> status = new AtomicReference<>(LRAStatus.Active);
 
-    public boolean isRecovering = false;
     public boolean isCancel;
     boolean isRoot = false;
     boolean isParent;
@@ -133,7 +135,6 @@ public class LRA {
     }
 
     public MultivaluedMap<String, Object> headers() {
-        //String coordinatorLraUrl = Coordinator.coordinatorURL + lraId;
         MultivaluedMap<String, Object> multivaluedMap = new MultivaluedHashMap<>(4);
         multivaluedMap.add(LRA_HTTP_CONTEXT_HEADER, lraId);
         multivaluedMap.add(LRA_HTTP_ENDED_CONTEXT_HEADER, lraId);
@@ -142,31 +143,44 @@ public class LRA {
         return multivaluedMap;
     }
 
-    void terminate(boolean isCancel, boolean isUnilateralCallIfNested) {
-        setProcessing(true);
-        status.updateAndGet(unused -> isCancel ? LRAStatus.Cancelling : LRAStatus.Closing);
-        this.isCancel = isCancel;
-        if (isUnilateralCallIfNested && isChild && !isCancel) isNestedThatShouldBeForgottenAfterParentEnds = true;
-        if (isChild && !isCancel && areAllInEndStateCompensatedOrFailedToCompensate()) {
-            return; //todo this only checks this child, not children of this child, verify correctness
+    void close() {
+        if (!status.compareAndSet(LRAStatus.Active, LRAStatus.Closing)) {
+            LOGGER.warning("Can't close LRA, it's already " + status.get().name() + " " + this.lraId);
+            return;
         }
-        if (isParent) {
-            for (LRA nestedLRA : children) {
-                if (!nestedLRA.areAllInEndStateOrListenerOnlyForTerminationType(isCancel)) {
-                    nestedLRA.terminate(isCancel, false); //todo this is the classic afterLRA/tx sync scenario - need to check if we traverse the tree twice or couple end and listener calls
-                }
+        for (LRA nestedLRA : children) {
+            nestedLRA.close();
+        }
+        sendComplete();
+        sendAfterLRA();
+    }
+
+    void cancel() {
+        if (!status.compareAndSet(LRAStatus.Active, LRAStatus.Cancelling)){
+            LOGGER.warning("Can't cancel LRA, it's already " + status.get().name() + " " + this.lraId);
+            return;
+        }
+        for (LRA nestedLRA : children) {
+            nestedLRA.cancel();
+        }
+        sendCancel();
+        sendAfterLRA();
+    }
+
+    void terminate() {
+        for (LRA nestedLRA : children) {
+            if (!nestedLRA.areAllInEndStateOrListenerOnlyForTerminationType(isCancel)) {
+                nestedLRA.terminate();
             }
         }
-        sendCompleteOrCancel(isCancel);
-        sendAfterLRA();
+        cancel();
+        if (!sendAfterLRA()) return; // not all afters sent
         if (areAllInEndState() && areAllAfterLRASuccessfullyCalledOrForgotten()) {
             if (forgetAnyUnilaterallyCompleted()) {
-                status.updateAndGet(unused -> isCancel ? LRAStatus.Cancelled : LRAStatus.Closed);
                 // keep terminated for 5 minutes before deletion
                 whenReadyToDelete = System.currentTimeMillis() + 5 * 1000 * 60;
             }
         }
-        setProcessing(false);
     }
 
     public boolean forgetAnyUnilaterallyCompleted() {
@@ -177,36 +191,58 @@ public class LRA {
         }
         return true;
     }
+
     public AtomicReference<LRAStatus> status() {
         return status;
     }
 
-    private void sendCompleteOrCancel(boolean isCancel) {
+    private void sendComplete() {
+        boolean allClosed = true;
         for (Participant participant : participants) {
-            if (participant.isInEndStateOrListenerOnly() && !isChild) { //todo check ramifications of !isChild re timeout processing
+            if (participant.isInEndStateOrListenerOnly() && !isChild) {
                 continue;
             }
-            participant.sendCompleteOrCancel(this, isCancel);
+            allClosed = allClosed && participant.sendComplete(this);
+        }
+        if (allClosed) {
+            this.status().compareAndSet(LRAStatus.Closing, LRAStatus.Closed);
         }
     }
 
-
-    void sendAfterLRA() { // todo should set isRecovering or needsAfterLRA calls if this fails
-        if (areAllInEndState()) {
-            for (Participant participant : participants) {
-                participant.sendAfterLRA(this);
+    private void sendCancel() {
+        boolean allClosed = true;
+        for (Participant participant : participants) {
+            if (participant.isInEndStateOrListenerOnly() && !isChild) {
+                continue;
             }
+            allClosed = allClosed && participant.sendCancel(this);
+        }
+        if (allClosed) {
+            this.status().compareAndSet(LRAStatus.Cancelling, LRAStatus.Cancelled);
         }
     }
 
-    void trySendStatus() {
+
+    boolean sendAfterLRA() {
+        if (!areAllInEndState()) {
+            return false;
+        }
+
+        boolean allSent = true;
+        for (Participant participant : participants) {
+            allSent = allSent && participant.sendAfterLRA(this);
+        }
+        return allSent;
+    }
+
+    void tryRetrieveStatus() {
         if (!hasStatusEndpoints()) {
             return;
         }
         for (Participant participant : participants) {
             Optional<URI> statusURI = participant.getStatusURI();
             if (statusURI.isEmpty() || participant.isInEndStateOrListenerOnly()) continue;
-            participant.sendStatus(this, statusURI.get());
+            participant.retrieveStatus(this, statusURI.get());
         }
     }
 
@@ -263,7 +299,8 @@ public class LRA {
 
     public boolean areAllInEndStateCompensatedOrFailedToCompensate() {
         for (Participant participant : participants) {
-            if (participant.getParticipantStatus() != ParticipantStatus.Compensated && participant.getParticipantStatus() != ParticipantStatus.FailedToCompensate) {
+            if (participant.getParticipantStatus() != ParticipantStatus.Compensated
+                    && participant.getParticipantStatus() != ParticipantStatus.FailedToCompensate) {
                 return false;
             }
         }

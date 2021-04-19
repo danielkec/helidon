@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -50,7 +51,12 @@ public class Participant {
     private static final Logger LOGGER = Logger.getLogger(Participant.class.getName());
     private boolean isAfterLRASuccessfullyCalledIfEnlisted;
     private boolean isForgotten;
+    private AtomicReference<AfterLraStatus> afterLRACalled = new AtomicReference<>(AfterLraStatus.NOT_SENT);
     private ParticipantStatus participantStatus;
+
+    enum AfterLraStatus {
+        NOT_SENT, SENDING, SENT;
+    }
 
     @XmlElement
     @XmlJavaTypeAdapter(Link.JaxbAdapter.class)
@@ -156,62 +162,90 @@ public class Participant {
         }
     }
 
-    boolean sendCompleteOrCancel(LRA lra, boolean isCancel) {
-        Optional<URI> endpointURI = isCancel ? getCompensateURI() : getCompleteURI();
+    boolean sendCancel(LRA lra) {
+        Optional<URI> endpointURI = getCompensateURI();
         try {
-            Response response = sendCompleteOrCompensate(lra, endpointURI.get(), isCancel);
+            Response response = client.target(endpointURI.get())
+                    .request()
+                    .headers(lra.headers())
+                    .buildPut(Entity.text(LRAStatus.Cancelled.name()))
+                    .invoke();
 
             switch (response.getStatus()) {
                 // complete or compensated
-                case 200:
+                case 200:                
+                case 202:
                 case 410:
-                    setParticipantStatus(isCancel ? ParticipantStatus.Compensated : ParticipantStatus.Completed);
+                    setParticipantStatus(ParticipantStatus.Compensated);
                     return true;
 
                 // retryable
                 case 409:
-                case 202:
                 case 404:
                 case 503:
                 default:
-                    lra.isRecovering = true;
+                    setParticipantStatus(ParticipantStatus.FailedToCompensate);
             }
 
         } catch (Exception e) {
-            lra.isRecovering = true;
+            setParticipantStatus(ParticipantStatus.FailedToCompensate);
             LOGGER.log(Level.SEVERE, "Error when completing/canceling", e);
         }
         return false;
     }
 
-    private Response sendCompleteOrCompensate(LRA lra, URI endpointURI, boolean isCompensate) {
-        return client.target(endpointURI)
-                .request()
-                .headers(lra.headers())
-                .buildPut(Entity.text(isCompensate ? LRAStatus.Cancelled.name() : LRAStatus.Closed.name()))
-                .invoke();
+    boolean sendComplete(LRA lra) {
+        Optional<URI> endpointURI = getCompleteURI();
+        try {
+            Response response = client.target(endpointURI.get())
+                    .request()
+                    .headers(lra.headers())
+                    .buildPut(Entity.text(LRAStatus.Closed.name()))
+                    .invoke();
+
+            switch (response.getStatus()) {
+                // complete or compensated
+                case 200:
+                case 202:
+                case 410:
+                    setParticipantStatus(ParticipantStatus.Completed);
+                    return true;
+
+                // retryable
+                case 409:
+                case 404:
+                case 503:
+                default:
+                    setParticipantStatus(ParticipantStatus.FailedToComplete);
+            }
+
+        } catch (Exception e) {
+            setParticipantStatus(ParticipantStatus.FailedToComplete);
+            LOGGER.log(Level.SEVERE, "Error when completing/canceling", e);
+        }
+        return false;
     }
 
-    public void sendAfterLRA(LRA lra) {
+    public boolean sendAfterLRA(LRA lra) {
         try {
             Optional<URI> afterURI = getAfterURI();
-            if (afterURI.isPresent()) {
-                if (isAfterLRASuccessfullyCalledIfEnlisted()) return;
+            if (afterURI.isPresent() && afterLRACalled.compareAndSet(AfterLraStatus.NOT_SENT, AfterLraStatus.SENDING)) {
                 Response response = client.target(afterURI.get())
                         .request()
                         .headers(lra.headers())
-                        .buildPut(Entity.text(lra.isCancel ? LRAStatus.Cancelled.name() : LRAStatus.Closed.name()))
+                        .buildPut(Entity.text(lra.status().get().name()))
                         .invoke();
-                int responseStatus = response.getStatus();
-                if (responseStatus == 200) setAfterLRASuccessfullyCalledIfEnlisted();
+                int status = response.getStatus();
+                afterLRACalled.updateAndGet(old -> status == 200 ? AfterLraStatus.SENT : AfterLraStatus.NOT_SENT);
             }
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Error when sending after lra", e);
         }
+        return afterLRACalled.get() == AfterLraStatus.SENT;
     }
 
 
-    public void sendStatus(LRA lra, URI statusURI) {
+    public void retrieveStatus(LRA lra, URI statusURI) {
         Response response;
         int responseStatus;
         String readEntity;

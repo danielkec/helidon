@@ -16,8 +16,6 @@
  */
 package io.helidon.microprofile.lra.coordinator;
 
-import org.eclipse.microprofile.lra.annotation.LRAStatus;
-
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.UUID;
@@ -31,6 +29,7 @@ import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.context.BeforeDestroyed;
 import javax.enterprise.context.Initialized;
 import javax.enterprise.event.Observes;
+import javax.inject.Inject;
 import javax.ws.rs.DefaultValue;
 import javax.ws.rs.GET;
 import javax.ws.rs.HeaderParam;
@@ -42,7 +41,6 @@ import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
 import javax.ws.rs.WebApplicationException;
-import javax.ws.rs.client.Entity;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
@@ -51,6 +49,9 @@ import io.helidon.microprofile.scheduling.FixedRate;
 
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVERY_HEADER;
+
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.eclipse.microprofile.lra.annotation.LRAStatus;
 
 @ApplicationScoped
 @Path("lra-coordinator")
@@ -65,12 +66,20 @@ public class Coordinator {
     LraPersistentRegistry lraPersistentRegistry = new LraPersistentRegistry();
     static String coordinatorURL = "http://localhost:8070/lra-coordinator/";
 
+    @Inject
+    @ConfigProperty(name = "lra.tck.coordinator.persist", defaultValue = "false")
+    private Boolean persistent;
+
     public void init(@Observes @Initialized(ApplicationScoped.class) Object init) {
-        lraPersistentRegistry.load();
+        if (persistent) {
+            lraPersistentRegistry.load();
+        }
     }
 
     private void whenApplicationTerminates(@Observes @BeforeDestroyed(ApplicationScoped.class) final Object event) {
-        lraPersistentRegistry.save();
+        if (persistent) {
+            lraPersistentRegistry.save();
+        }
     }
 
     @POST
@@ -116,11 +125,12 @@ public class Coordinator {
         if (lra == null) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
-        if (lra.isReadyToDelete()) {
+        if (lra.status().get() != LRAStatus.Active) {
             // Already time-outed
             return Response.status(Response.Status.GONE).build();
         }
-        lra.terminate(false, true);
+        tick();
+        lra.close();
         return Response.ok().build();
     }
 
@@ -132,7 +142,8 @@ public class Coordinator {
         if (lra == null) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
-        lra.terminate(true, true);
+        tick();
+        lra.cancel();
         return Response.ok().build();
     }
 
@@ -183,14 +194,16 @@ public class Coordinator {
                 .build();
     }
 
-    @FixedRate(value = 500, timeUnit = TimeUnit.MILLISECONDS)
-    public void run() {
+    @FixedRate(value = 200, timeUnit = TimeUnit.MILLISECONDS)
+    public void tick() {
         lraPersistentRegistry.stream().forEach(lra -> {
-            if (!lra.isProcessing()) {
-                if (lra.isReadyToDelete()) {
-                    lraPersistentRegistry.remove(lra.lraId);
-                } else {
-                    doRun(lra);
+            if (lra.isReadyToDelete()) {
+                lraPersistentRegistry.remove(lra.lraId);
+            } else {
+                synchronized (this) {
+                    if (lra.checkTimeout() && lra.status().get().equals(LRAStatus.Active)) {
+                        lra.terminate();
+                    }
                 }
             }
         });
@@ -204,26 +217,6 @@ public class Coordinator {
                 //wait for the second one, as first could have been in progress
                 .onCompleteResumeWith(Single.create(completedRecovery.get(), true))
                 .ignoreElements();
-    }
-
-    private void doRun(LRA lra) {
-        String uri = lra.lraId;
-        if (lra.isRecovering) {
-            lra.trySendStatus();
-            if (!lra.areAllInEndState()) {
-                lra.terminate(lra.isCancel, false); // this should purge if areAllAfterLRASuccessfullyCalled
-            }
-            //todo push all of the following into LRA terminate...
-            lra.sendAfterLRA(); //this method gates so no need to do check here
-            if (lra.areAllInEndState() && (lra.areAnyInFailedState())) {
-                lra.sendForget();
-                if (lra.areAllAfterLRASuccessfullyCalledOrForgotten()) lraPersistentRegistry.remove(uri);
-            }
-        } else {
-            if (lra.checkTimeout()) {
-                lra.terminate(true, false);
-            }
-        }
     }
 
     @PUT

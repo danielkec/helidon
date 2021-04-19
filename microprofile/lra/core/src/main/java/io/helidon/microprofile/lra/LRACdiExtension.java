@@ -20,8 +20,15 @@ import org.eclipse.microprofile.lra.annotation.Compensate;
 import org.eclipse.microprofile.lra.annotation.Complete;
 import org.eclipse.microprofile.lra.annotation.Forget;
 import org.eclipse.microprofile.lra.annotation.Status;
+import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
+
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
+import java.util.Map;
+import java.util.Set;
 
 import javax.enterprise.event.Observes;
+import javax.enterprise.inject.spi.DeploymentException;
 import javax.enterprise.inject.spi.Extension;
 import javax.enterprise.inject.spi.ProcessAnnotatedType;
 import javax.enterprise.inject.spi.WithAnnotations;
@@ -32,18 +39,17 @@ public class LRACdiExtension implements Extension {
     private void registerChannelMethods(
             @Observes
             @WithAnnotations({
-                    Path.class,
+                    LRA.class,
                     AfterLRA.class,
                     Compensate.class,
                     Complete.class,
                     Forget.class,
                     Status.class
             }) ProcessAnnotatedType<?> pat) {
-        // Lookup channel methods
-//        LRAParticipant participant = getAsParticipant(pat.getAnnotatedType());
-//        if (participant != null) {
-//            participants.put(participant.getJavaClass().getName(), participant);
-//        }
-        
+        Set<Class<? extends Annotation>> annotated = Participant.scanForLRAMethods(pat.getAnnotatedType().getJavaClass()).keySet();
+        if(!annotated.contains(AfterLRA.class) && !annotated.contains(Compensate.class)){
+            // TODO: invalid deployment
+            //throw new DeploymentException("LRA resource missing @Compensate or @AfterLRA annotated methods.");
+        }
     }
 }

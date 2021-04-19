@@ -18,14 +18,12 @@ package io.helidon.microprofile.lra;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.ws.rs.NotFoundException;
@@ -33,8 +31,6 @@ import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.client.ClientBuilder;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.Link;
-import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriBuilder;
 
@@ -84,7 +80,27 @@ public class NarayanaClient implements CoordinatorClient {
 
     @Override
     public void cancel(final URI lraId) throws WebApplicationException {
-        throw new RuntimeException("Not implemented yet!!!");
+        try {
+            Response response = ClientBuilder.newClient()
+                    .target(coordinatorUrl)
+                    .path(lraId.toASCIIString())
+                    .path("cancel")
+                    .request()
+                    .async()
+                    .put(Entity.text(""))
+                    .get(10, TimeUnit.SECONDS);
+
+            switch (response.getStatus()) {
+                case 404:
+                    throw new NotFoundException("NOTFOUND", Response.status(NOT_FOUND).entity(lraId.toASCIIString()).build());
+                case 200:
+                case 202:
+                    break;
+                default:
+            }
+        } catch (InterruptedException | ExecutionException | TimeoutException e) {
+            throw new WebApplicationException("Unable to start LRA", e);
+        }
     }
 
     @Override
@@ -117,26 +133,7 @@ public class NarayanaClient implements CoordinatorClient {
                     Long timeLimit,
                     Participant participant) throws WebApplicationException {
         try {
-            String links = Map.of(
-                    "compensate", participant.compensate(),
-                    "complete", participant.complete(),
-                    "forget", participant.forget(),
-                    "leave", participant.leave(),
-                    "after", participant.after(),
-                    "status", participant.status()
-            )
-                    .entrySet()
-                    .stream()
-                    .filter(e -> e.getValue().isPresent())
-                    .map(e -> Link.fromUri(e.getValue().get())
-                            .title(e.getKey() + " URI")
-                            .rel(e.getKey())
-                            .type(MediaType.TEXT_PLAIN)
-                            .build())
-                    .map(String::valueOf)
-                    .collect(Collectors.joining(","));
-
-
+            String links = participant.compenstorLinks();
             Response response = ClientBuilder.newClient()
                     .target(coordinatorUrl)
                     .path(lraId.toASCIIString())
@@ -176,9 +173,31 @@ public class NarayanaClient implements CoordinatorClient {
     }
 
     @Override
-    public void leave(final URI lraId, final String body) throws WebApplicationException {
-        throw new RuntimeException("Not implemented yet!!!");
+    public void leave(URI lraId, Participant participant) throws WebApplicationException {
+        try {
+            Response response = ClientBuilder.newClient()
+                    .target(coordinatorUrl)
+                    .path(lraId.toASCIIString())
+                    .path("remove")
+                    .request()
+                    .async()
+                    .put(Entity.text(participant.compenstorLinks()))
+                    .get(10, TimeUnit.SECONDS);
+
+            switch (response.getStatus()) {
+                case 404:
+                    throw new NotFoundException("NOTFOUND", Response.status(NOT_FOUND).entity(lraId.toASCIIString()).build());
+                case 200:
+                    return;
+                default:
+                    throw new IllegalStateException("Unexpected coordinator response " + response.getStatus());
+            }
+
+        } catch (InterruptedException | ExecutionException | TimeoutException | IllegalStateException e) {
+            throw new WebApplicationException("Unable to leave LRA " + lraId, e);
+        }
     }
+
 
     @Override
     public LRAStatus status(final URI lraId) throws WebApplicationException {

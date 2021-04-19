@@ -12,17 +12,24 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
  */
+
 package io.helidon.microprofile.lra;
 
-import org.glassfish.jersey.internal.spi.AutoDiscoverable;
+import javax.ws.rs.core.UriBuilder;
 
-public class LRAAutoDiscoverable implements AutoDiscoverable {
+import org.junit.jupiter.api.Test;
 
-    @Override
-    public void configure(javax.ws.rs.core.FeatureContext ctx) {
-        ctx.register(JaxrsServerFilter.class)
-                .register(JaxrsClientFilter.class)
-                .register(StatusBodyReader.class);
+import java.net.URI;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+public class ParticipantTest {
+    @Test
+    void methodScan() throws NoSuchMethodException {
+        Participant p = Participant.get(UriBuilder.fromPath("http://localhost:8888").build(), TestApplication.DontEnd.class);
+        assertTrue(p.isLraMethod(TestApplication.DontEnd.class.getMethod("startDontEndLRA", URI.class)));
+        assertTrue(p.isLraMethod(TestApplication.DontEnd.class.getMethod("endLRA", URI.class)));
     }
 }

@@ -110,9 +110,9 @@ public class BasicTest {
                 .request()
                 .async()
                 .put(Entity.text(""))
-                .get(10, TimeUnit.SECONDS);
+                .get(2, TimeUnit.SECONDS);
         assertThat(response.getStatus(), AnyOf.anyOf(is(200), is(204)));
-        getCompletable("start-and-after").get(10, TimeUnit.SECONDS);
+        getCompletable("start-and-after").get(2, TimeUnit.SECONDS);
     }
 
     @Test

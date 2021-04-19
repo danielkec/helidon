@@ -20,12 +20,18 @@ package io.helidon.microprofile.lra;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.net.URI;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Stream;
+import java.util.stream.Collectors;
 
+import javax.ws.rs.Path;
+import javax.ws.rs.core.Link;
+import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.UriBuilder;
 
 import org.eclipse.microprofile.lra.annotation.AfterLRA;
@@ -44,15 +50,28 @@ public class Participant {
     static final Map<Class<?>, Participant> participants = new HashMap<>();
 
     private final Map<Class<? extends Annotation>, URI> compensatorLinks = new HashMap<>();
+    private final Map<Class<? extends Annotation>, Set<Method>> methodMap;
 
     private Participant(URI baseUri, Class<?> resourceClazz) {
-        Map<Class<? extends Annotation>, Method> methodMap = scanForLRAMethods(resourceClazz);
-        methodMap.forEach((annotation, method) -> compensatorLinks.put(annotation,
-                UriBuilder.fromUri(baseUri)
-                        .path(resourceClazz)
-                        .path(resourceClazz, method.getName())
-                        .build()
-        ));
+        methodMap = scanForLRAMethods(resourceClazz);
+        methodMap.entrySet().stream()
+                .filter(e -> e.getKey() != LRA.class)
+                .forEach(e -> {
+                    Method method = e.getValue().stream().findFirst().get();
+                    UriBuilder builder = UriBuilder.fromUri(baseUri)
+                            .path(resourceClazz);
+
+                    if (method.getAnnotation(Path.class) != null) {
+                        builder.path(resourceClazz, method.getName());
+                    }
+
+                    URI uri = builder.build();
+                    compensatorLinks.put(e.getKey(), uri);
+                });
+    }
+
+    public boolean isLraMethod(Method m) {
+        return methodMap.values().stream().flatMap(s -> s.stream()).anyMatch(m::equals);
     }
 
     public Optional<URI> compensate() {
@@ -83,22 +102,65 @@ public class Participant {
         return participants.computeIfAbsent(clazz, c -> new Participant(baseUri, c));
     }
 
-    private static Map<Class<? extends Annotation>, Method> scanForLRAMethods(Class<?> clazz) {
-        Map<Class<? extends Annotation>, Method> methods = new HashMap<>();
+    public static Optional<Annotation> getLRAAnnotation(Method m) {
+        List<Annotation> found = Arrays.stream(m.getDeclaredAnnotations())
+                .filter(a -> LRA_ANNOTATIONS.contains(a.annotationType()))
+                .collect(Collectors.toList());
+
+        if (found.size() > 1) {
+            // TODO: LRA + Leave is OK
+            //throw new IllegalStateException("Only one LRA annotation on the method is allowed " + m.getDeclaringClass() + "#" + m.getName());
+        }
+
+        if (found.size() == 0) {
+            // LRA can be inherited from class or its predecesors
+            var clazz = m.getDeclaringClass();
+            do {
+                LRA clazzLraAnnotation = clazz.getAnnotation(LRA.class);
+                if (clazzLraAnnotation != null) {
+                    return Optional.of(clazzLraAnnotation);
+                }
+                clazz = clazz.getSuperclass();
+            } while (clazz != null);
+        }
+
+        return found.stream().findFirst();
+    }
+
+    public String compenstorLinks() {
+        return Map.of(
+                "compensate", compensate(),
+                "complete", complete(),
+                "forget", forget(),
+                "leave", leave(),
+                "after", after(),
+                "status", status()
+        )
+                .entrySet()
+                .stream()
+                .filter(e -> e.getValue().isPresent())
+                .map(e -> Link.fromUri(e.getValue().get())
+                        .title(e.getKey() + " URI")
+                        .rel(e.getKey())
+                        .type(MediaType.TEXT_PLAIN)
+                        .build())
+                .map(String::valueOf)
+                .collect(Collectors.joining(","));
+    }
+
+    public static Map<Class<? extends Annotation>, Set<Method>> scanForLRAMethods(Class<?> clazz) {
+        Map<Class<? extends Annotation>, Set<Method>> methods = new HashMap<>();
         do {
             for (Method m : clazz.getDeclaredMethods()) {
-                Optional<? extends Class<? extends Annotation>> annotation = getLRAAnnotation(m);
-                annotation.ifPresent(aClass -> methods.putIfAbsent(aClass, m));
+                Optional<Annotation> annotation = getLRAAnnotation(m);
+                if (annotation.isPresent()) {
+                    methods.putIfAbsent(annotation.get().annotationType(), new HashSet<>());
+                    methods.get(annotation.get().annotationType()).add(m);
+                }
             }
             clazz = clazz.getSuperclass();
         } while (clazz != null);
         return methods;
     }
 
-    private static Optional<? extends Class<? extends Annotation>> getLRAAnnotation(Method m) {
-        return Stream.of(m.getDeclaredAnnotations())
-                .map(Annotation::annotationType)
-                .filter(LRA_ANNOTATIONS::contains)
-                .findFirst();
-    }
 }

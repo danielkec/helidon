@@ -197,9 +197,12 @@ public class HelidonDeployableContainer implements DeployableContainer<HelidonCo
         return new ProtocolMetaData();
     }
     
-    static Optional<IllegalStateException> lookForSupressedDeploymentException(Throwable t){
+    static Optional<Exception> lookForSupressedDeploymentException(Throwable t){
         if(t == null){
             return Optional.empty();
+        }
+        if(javax.enterprise.inject.spi.DeploymentException.class.isAssignableFrom(t.getClass())){
+            return Optional.of((javax.enterprise.inject.spi.DeploymentException) t);
         }
         if(IllegalStateException.class.isAssignableFrom(t.getClass())){
             return Optional.of((IllegalStateException) t);

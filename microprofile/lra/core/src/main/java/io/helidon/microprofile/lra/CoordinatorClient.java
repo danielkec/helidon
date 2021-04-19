@@ -30,6 +30,6 @@ public interface CoordinatorClient {
     void close(URI lraId) throws WebApplicationException;
     URI join(URI lraId, Long timeLimit, Participant participant) throws WebApplicationException;
     URI join(URI lraId, Long timeLimit, URI participant) throws WebApplicationException;
-    void leave(URI lraId, String body) throws WebApplicationException;
+    void leave(URI lraId, Participant participant) throws WebApplicationException;
     LRAStatus status(URI uri) throws WebApplicationException;
 }

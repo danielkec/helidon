@@ -53,11 +53,17 @@ class LRAAnnotationHandler implements AnnotationHandler {
 
         URI lraId = null;
         switch (annotation.value()) {
-            case NOT_SUPPORTED:
-                if (existingLraId.isPresent()) {
-                    throw new IllegalStateException("LRA is not supported by method. " + method);
+            case NEVER:
+                if(reqCtx.getHeaders().getFirst(LRA_HTTP_CONTEXT_HEADER) != null){
+                    // If called inside an LRA context, i.e., the method is not executed 
+                    // and a 412 Precondition Failed is returned
+                    reqCtx.abortWith(Response.status(Response.Status.PRECONDITION_FAILED).build());
+                    return;
                 }
                 break;
+            case NOT_SUPPORTED:
+                reqCtx.getHeaders().remove(LRA_HTTP_CONTEXT_HEADER);
+                return;
             case SUPPORTS:
                 if (existingLraId.isPresent()) {
                     URI recoveryUri = coordinatorClient.join(existingLraId.get(), annotation.timeLimit(), participant);
@@ -70,7 +76,7 @@ class LRAAnnotationHandler implements AnnotationHandler {
                 if (existingLraId.isEmpty()) {
                     // If called outside an LRA context the method is not executed and a
                     // 412 Precondition Failed HTTP status code is returned to the caller
-                    //reqCtx.abortWith(Response.status(Response.Status.PRECONDITION_FAILED).build());
+                    reqCtx.abortWith(Response.status(Response.Status.PRECONDITION_FAILED).build());
                     return;
                 }
                 // existing lra, fall thru to required
@@ -94,7 +100,7 @@ class LRAAnnotationHandler implements AnnotationHandler {
         }
         lraId = lraId != null ? lraId : existingLraId.orElse(null);
         if (lraId != null) {
-            reqCtx.getHeaders().add(LRA_HTTP_CONTEXT_HEADER, lraId.toASCIIString());
+            reqCtx.getHeaders().putSingle(LRA_HTTP_CONTEXT_HEADER, lraId.toASCIIString());
             LRAThreadContext.get().lra(lraId);
         }
         reqCtx.setProperty("lra.end", annotation.end());

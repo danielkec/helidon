@@ -25,6 +25,7 @@ import java.util.logging.Logger;
 import javax.inject.Inject;
 import javax.ws.rs.ConstrainedTo;
 import javax.ws.rs.RuntimeType;
+import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.client.ClientRequestContext;
 import javax.ws.rs.client.ClientRequestFilter;
 import javax.ws.rs.container.ContainerRequestContext;
@@ -65,6 +66,9 @@ public class JaxrsServerFilter implements ContainerRequestFilter, ContainerRespo
             if (handler == null) return;
             handler.handleJaxrsBefore(requestContext, resourceInfo);
 
+        } catch (WebApplicationException e) {
+            // Rethrow error responses
+            throw e;
         } catch (Throwable e) {
             LOGGER.log(Level.SEVERE, "Error when invoking LRA participant request", e);
         }

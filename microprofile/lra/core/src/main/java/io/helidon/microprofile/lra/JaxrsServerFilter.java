@@ -22,12 +22,11 @@ import java.util.Optional;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import javax.enterprise.inject.Any;
 import javax.inject.Inject;
 import javax.ws.rs.ConstrainedTo;
 import javax.ws.rs.RuntimeType;
 import javax.ws.rs.WebApplicationException;
-import javax.ws.rs.client.ClientRequestContext;
-import javax.ws.rs.client.ClientRequestFilter;
 import javax.ws.rs.container.ContainerRequestContext;
 import javax.ws.rs.container.ContainerRequestFilter;
 import javax.ws.rs.container.ContainerResponseContext;
@@ -51,6 +50,9 @@ public class JaxrsServerFilter implements ContainerRequestFilter, ContainerRespo
     @Inject
     CoordinatorClient coordinatorClient;
 
+    @Inject
+    InspectionService inspectionService;
+
     @Override
     public void filter(ContainerRequestContext requestContext) throws IOException {
         try {
@@ -62,10 +64,9 @@ public class JaxrsServerFilter implements ContainerRequestFilter, ContainerRespo
                     .ifPresent(lraId -> LRAThreadContext.get().lra(lraId));
 
             // select current lra annotation handler and process
-            AnnotationHandler handler = AnnotationHandler.create(method, coordinatorClient);
-            if (handler == null) return;
-            handler.handleJaxrsBefore(requestContext, resourceInfo);
-
+            for (AnnotationHandler handler : AnnotationHandler.create(method, inspectionService, coordinatorClient)) {
+                handler.handleJaxrsBefore(requestContext, resourceInfo);
+            }
         } catch (WebApplicationException e) {
             // Rethrow error responses
             throw e;
@@ -84,9 +85,9 @@ public class JaxrsServerFilter implements ContainerRequestFilter, ContainerRespo
             }
 
             // select current lra annotation handler and process
-            AnnotationHandler handler = AnnotationHandler.create(method, coordinatorClient);
-            if (handler == null) return;
-            handler.handleJaxrsAfter(requestContext, responseContext, resourceInfo);
+            for (AnnotationHandler handler : AnnotationHandler.create(method, inspectionService, coordinatorClient)) {
+                handler.handleJaxrsAfter(requestContext, responseContext, resourceInfo);
+            }
 
             // Clean up
             LRAThreadContext.clear();

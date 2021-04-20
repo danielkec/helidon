@@ -17,12 +17,13 @@
 
 package io.helidon.microprofile.lra;
 
-import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
+import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.function.BiFunction;
+import java.util.Objects;
+import java.util.Set;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 import javax.ws.rs.container.ContainerRequestContext;
 import javax.ws.rs.container.ContainerResponseContext;
@@ -30,33 +31,36 @@ import javax.ws.rs.container.ResourceInfo;
 
 import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
 import org.eclipse.microprofile.lra.annotation.ws.rs.Leave;
+import org.jboss.jandex.AnnotationInstance;
 
 interface AnnotationHandler {
 
-    static final Logger LOGGER = Logger.getLogger(AnnotationHandler.class.getName());
+    Logger LOGGER = Logger.getLogger(AnnotationHandler.class.getName());
 
-    static Map<Class<? extends Annotation>, BiFunction<Annotation, CoordinatorClient, AnnotationHandler>> HANDLER_SUPPLIERS =
+    Map<String, HandlerMaker> HANDLER_SUPPLIERS =
             Map.of(
-                    LRA.class, (a, client) -> new LRAAnnotationHandler((LRA) a, client),
-                    Leave.class, (a, client) -> new LeaveAnnotationHandler(client)
+                    LRA.class.getName(), LRAAnnotationHandler::new,
+                    Leave.class.getName(), (a, client, i) -> new LeaveAnnotationHandler(client)
             );
 
-    static AnnotationHandler create(Method m, CoordinatorClient coordinatorClient) {
-        Optional<Annotation> lraAnnotation = Participant.getLRAAnnotation(m);
-        if (lraAnnotation.isEmpty()) {
-            return new NoAnnotationHandler();
+    static List<AnnotationHandler> create(Method m, InspectionService inspectionService, CoordinatorClient coordinatorClient) {
+        Set<AnnotationInstance> lraAnnotations = inspectionService.lookUpLraAnnotations(m);
+        if (lraAnnotations.isEmpty()) {
+            return List.of(new NoAnnotationHandler());
         }
 
-        var handlerMaker = HANDLER_SUPPLIERS.get(lraAnnotation.get().annotationType());
+        return lraAnnotations.stream().map(lraAnnotation -> {
+            var handlerMaker =
+                    HANDLER_SUPPLIERS.get(lraAnnotation.name().toString());
 
-        if (handlerMaker == null) {
-            // TODO: this can't happen
-            LOGGER.severe("Not implemented yet!!! Not implemented handler for LRA annoration "
-                    + lraAnnotation.get().annotationType().getName());
-            return null;
-        }
-
-        return handlerMaker.apply(lraAnnotation.get(), coordinatorClient);
+            if (handlerMaker == null) {
+                // TODO: this can't happen
+                LOGGER.severe("Not implemented yet!!! Not implemented handler for LRA annoration " + lraAnnotation);
+                return null;
+            }
+            return handlerMaker.make(lraAnnotation, coordinatorClient, inspectionService);
+        }).filter(Objects::nonNull)
+                .collect(Collectors.toList());
     }
 
     void handleJaxrsBefore(ContainerRequestContext requestContext,
@@ -65,4 +69,11 @@ interface AnnotationHandler {
     void handleJaxrsAfter(ContainerRequestContext requestContext,
                           ContainerResponseContext responseContext,
                           ResourceInfo resourceInfo);
+
+    @FunctionalInterface
+    interface HandlerMaker {
+        AnnotationHandler make(AnnotationInstance annotationInstance,
+                               CoordinatorClient coordinatorClient,
+                               InspectionService inspectionService);
+    }
 }

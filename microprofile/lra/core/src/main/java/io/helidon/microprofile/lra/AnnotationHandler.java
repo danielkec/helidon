@@ -54,8 +54,7 @@ interface AnnotationHandler {
                     HANDLER_SUPPLIERS.get(lraAnnotation.name().toString());
 
             if (handlerMaker == null) {
-                // TODO: this can't happen
-                LOGGER.severe("Not implemented yet!!! Not implemented handler for LRA annoration " + lraAnnotation);
+                // Non LRA annotation on LRA method, skipping
                 return null;
             }
             return handlerMaker.make(lraAnnotation, coordinatorClient, inspectionService);

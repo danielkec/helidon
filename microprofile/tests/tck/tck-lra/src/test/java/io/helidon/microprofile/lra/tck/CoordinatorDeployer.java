@@ -36,7 +36,6 @@ public class CoordinatorDeployer {
         containerConfig.set("server.sockets.0.bind-address", "localhost");
 
         JavaArchive javaArchive = ShrinkWrap.create(JavaArchive.class)
-                .addPackage(Coordinator.class.getPackage())
                 .addAsManifestResource(new StringAsset(
                         "<beans xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n" +
                                 "       xmlns=\"http://xmlns.jcp.org/xml/ns/javaee\"\n" +

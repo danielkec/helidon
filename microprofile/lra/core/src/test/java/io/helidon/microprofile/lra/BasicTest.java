@@ -64,6 +64,7 @@ import org.junit.jupiter.api.Test;
 @AddBean(TestApplication.StartAndClose.class)
 @AddBean(TestApplication.StartAndAfter.class)
 @AddBean(TestApplication.DontEnd.class)
+@AddBean(TestApplication.Timeout.class)
 @AddBean(Coordinator.class)
 @AddBean(CoordinatorApplication.class)
 @AddConfig(key = "io.helidon.microprofile.lra.coordinator.CoordinatorApplication."
@@ -138,5 +139,18 @@ public class BasicTest {
                 .get(10, TimeUnit.SECONDS).getStatus(), AnyOf.anyOf(is(200), is(204)));
         getCompletable("second-ending").get(10, TimeUnit.SECONDS);
         assertThat(coordinatorClient.status(lraId), is(LRAStatus.Closed));
+    }
+
+    @Test
+    void timeout(WebTarget target) throws Exception {
+        Response response = target.path("timeout")
+                .path("timeout")
+                .request()
+                .async()
+                .put(Entity.text(""))
+                .get(2, TimeUnit.SECONDS);
+        assertThat(response.getStatus(), is(200));
+        getCompletable("timeout").get(5, TimeUnit.SECONDS);
+        getCompletable("timeout-compensated").get(5, TimeUnit.SECONDS);
     }
 }

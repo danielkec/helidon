@@ -18,31 +18,37 @@
 package io.helidon.microprofile.lra;
 
 import java.net.URI;
+import java.time.temporal.ChronoUnit;
 import java.util.Set;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.inject.Inject;
-import javax.ws.rs.DefaultValue;
 import javax.ws.rs.HeaderParam;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
-import javax.ws.rs.QueryParam;
+import javax.ws.rs.Produces;
 import javax.ws.rs.core.Application;
+import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
+import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVERY_HEADER;
 
+import org.eclipse.microprofile.lra.LRAResponse;
 import org.eclipse.microprofile.lra.annotation.AfterLRA;
+import org.eclipse.microprofile.lra.annotation.Compensate;
 import org.eclipse.microprofile.lra.annotation.Complete;
 import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
 import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
+
+import io.helidon.common.reactive.Single;
 
 @ApplicationScoped
 public class TestApplication extends Application {
     
     @Override
     public Set<Class<?>> getClasses() {
-        return Set.of(StartAndAfter.class, StartAndClose.class, DontEnd.class);
+        return Set.of(StartAndAfter.class, StartAndClose.class, DontEnd.class, Timeout.class);
     }
 
     @Path("/start-and-close")
@@ -105,6 +111,37 @@ public class TestApplication extends Application {
 
     }
 
+    @ApplicationScoped
+    @Path("/timeout")
+    public static class Timeout {
+
+        @Inject
+        BasicTest basicTest;
+
+        @PUT
+        @Path("timeout")
+        @LRA(value = LRA.Type.REQUIRES_NEW, timeLimit = 500, timeUnit = ChronoUnit.MILLIS)
+        public Response startLRA(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId) {
+
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+            }
+            basicTest.getCompletable("timeout").complete(lraId);
+            return Response.ok().build();
+        }
+
+        @PUT
+        @Path("/compensate")
+        @Produces(MediaType.APPLICATION_JSON)
+        @Compensate
+        public Response compensateWork(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
+                                       @HeaderParam(LRA_HTTP_RECOVERY_HEADER) URI recoveryId) {
+            basicTest.getCompletable("timeout-compensated").complete(null);
+            return LRAResponse.compensated();
+        }
+    }
+    
     @ApplicationScoped
     public static class CommonAfter {
 

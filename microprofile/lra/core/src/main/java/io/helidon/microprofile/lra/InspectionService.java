@@ -29,6 +29,7 @@ import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.inject.spi.DeploymentException;
 import javax.inject.Inject;
 
+import org.eclipse.microprofile.lra.annotation.Compensate;
 import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
 import org.jboss.jandex.AnnotationInstance;
 import org.jboss.jandex.ClassInfo;
@@ -66,6 +67,12 @@ public class InspectionService {
                         + " not found indexed in class " + declaringClazz.name()));
         deepScanLraMethod(declaringClazz, annotations, methodInfo.name(), methodInfo.parameters().toArray(new Type[0]));
         HashSet<AnnotationInstance> result = new HashSet<>(annotations.values());
+
+        if (annotations.containsKey(DotName.createSimple(Compensate.class.getName()).toString())) {
+            // compensate can't be accompanied by class level LRA
+            return result;
+        }
+
         AnnotationInstance classLevelLraAnnotation = deepScanClassLevelLraAnnotation(declaringClazz);
         if (classLevelLraAnnotation != null) {
             // add class level @LRA only if not declared by method

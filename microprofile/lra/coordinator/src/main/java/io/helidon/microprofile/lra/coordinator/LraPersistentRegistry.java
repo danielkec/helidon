@@ -60,7 +60,7 @@ public class LraPersistentRegistry {
         lraMap.remove(key);
     }
 
-    Stream<LRA> stream() {
+    synchronized Stream<LRA> stream() {
         return new HashSet<>(lraMap.values()).stream();
     }
 

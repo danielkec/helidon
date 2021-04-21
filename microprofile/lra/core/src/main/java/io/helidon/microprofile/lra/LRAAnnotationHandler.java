@@ -57,7 +57,7 @@ class LRAAnnotationHandler implements AnnotationHandler {
         var end = annotation.valueWithDefault(inspectionService.index(), "end").asBoolean();
 
         URI lraId = null;
-        switch (LRA.Type.valueOf(annotation.value("value").asString())) {
+        switch (LRA.Type.valueOf(annotation.valueWithDefault(inspectionService.index(), "value").asString())) {
             case NEVER:
                 if (reqCtx.getHeaders().getFirst(LRA_HTTP_CONTEXT_HEADER) != null) {
                     // If called inside an LRA context, i.e., the method is not executed 

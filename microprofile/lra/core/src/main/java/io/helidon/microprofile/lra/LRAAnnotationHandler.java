@@ -28,6 +28,7 @@ import javax.ws.rs.container.ResourceInfo;
 import javax.ws.rs.core.Response;
 
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
+import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_PARENT_CONTEXT_HEADER;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVERY_HEADER;
 
 import org.jboss.jandex.AnnotationInstance;
@@ -55,8 +56,23 @@ class LRAAnnotationHandler implements AnnotationHandler {
 
         URI lraId = null;
         switch (annotation.value()) {
+            case NESTED:
+                if (existingLraId.isPresent()) {
+                    reqCtx.getHeaders().putSingle(LRA_HTTP_PARENT_CONTEXT_HEADER, existingLraId.get().toASCIIString());
+                    reqCtx.setProperty("suppressed.lra", existingLraId.get());
+                    lraId = coordinatorClient.start(null, method.getDeclaringClass().getName() + "#" + method.getName(), timeLimit);
+                    LOGGER.info("Coordinator confirmed started LRA " + lraId);
+                    URI recoveryUri = coordinatorClient.join(lraId, timeLimit, participant);
+                    reqCtx.getHeaders().add(LRA_HTTP_RECOVERY_HEADER, recoveryUri.toASCIIString());
+                } else {
+                    lraId = coordinatorClient.start(null, method.getDeclaringClass().getName() + "#" + method.getName(), timeLimit);
+                    LOGGER.info("Coordinator confirmed started LRA " + lraId);
+                    URI recoveryUri = coordinatorClient.join(lraId, timeLimit, participant);
+                    reqCtx.getHeaders().add(LRA_HTTP_RECOVERY_HEADER, recoveryUri.toASCIIString());
+                }
+                break;
             case NEVER:
-                if (reqCtx.getHeaders().getFirst(LRA_HTTP_CONTEXT_HEADER) != null) {
+                if (existingLraId.isPresent()) {
                     // If called inside an LRA context, i.e., the method is not executed 
                     // and a 412 Precondition Failed is returned
                     reqCtx.abortWith(Response.status(Response.Status.PRECONDITION_FAILED).build());
@@ -105,8 +121,6 @@ class LRAAnnotationHandler implements AnnotationHandler {
             reqCtx.getHeaders().putSingle(LRA_HTTP_CONTEXT_HEADER, lraId.toASCIIString());
             LRAThreadContext.get().lra(lraId);
         }
-        reqCtx.setProperty("lra.end", end);
-        LRAThreadContext.get().ending(end);
     }
 
     @Override
@@ -131,6 +145,11 @@ class LRAAnnotationHandler implements AnnotationHandler {
             coordinatorClient.close(lraId.get());
             LRAThreadContext.clear();
         }
+        URI suppressedLra = (URI) requestContext.getProperty("suppressed.lra");
+        if (suppressedLra != null){
+            responseContext.getHeaders().putSingle(LRA_HTTP_CONTEXT_HEADER, suppressedLra.toASCIIString());
+        }
+        
         if (lraId.isPresent()) {
             responseContext.getHeaders().putIfAbsent(LRA_HTTP_CONTEXT_HEADER, List.of(lraId.get().toASCIIString()));
         }

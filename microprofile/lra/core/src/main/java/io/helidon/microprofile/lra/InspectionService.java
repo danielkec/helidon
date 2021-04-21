@@ -32,8 +32,13 @@ import javax.enterprise.inject.spi.DeploymentException;
 import javax.inject.Inject;
 import javax.ws.rs.core.Response;
 
+import org.eclipse.microprofile.lra.annotation.AfterLRA;
 import org.eclipse.microprofile.lra.annotation.Compensate;
+import org.eclipse.microprofile.lra.annotation.Complete;
+import org.eclipse.microprofile.lra.annotation.Forget;
+import org.eclipse.microprofile.lra.annotation.Status;
 import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
+import org.eclipse.microprofile.lra.annotation.ws.rs.Leave;
 import org.jboss.jandex.AnnotationInstance;
 import org.jboss.jandex.AnnotationValue;
 import org.jboss.jandex.ClassInfo;
@@ -46,7 +51,14 @@ import org.jboss.jandex.Type;
 public class InspectionService {
 
     private final IndexView index;
+    private static final DotName LRA = DotName.createSimple(LRA.class.getName());
+    private static final DotName LEAVE = DotName.createSimple(Leave.class.getName());
+    private static final DotName AFTER_LRA = DotName.createSimple(AfterLRA.class.getName());
+    private static final DotName COMPLETE = DotName.createSimple(Complete.class.getName());
     private static final DotName COMPENSATE = DotName.createSimple(Compensate.class.getName());
+    private static final DotName FORGET = DotName.createSimple(Forget.class.getName());
+    private static final DotName STATUS = DotName.createSimple(Status.class.getName());
+    private static final Set<DotName> LRA_ANNOTATIONS = Set.of(LRA, LEAVE, AFTER_LRA, COMPLETE, COMPENSATE, FORGET, STATUS);
 
     @Inject
     public InspectionService(LRACdiExtension lraCdiExtension) {
@@ -72,8 +84,15 @@ public class InspectionService {
         deepScanLraMethod(declaringClazz, annotations, methodInfo.name(), methodInfo.parameters().toArray(new Type[0]));
         HashSet<AnnotationInstance> result = new HashSet<>(annotations.values());
 
+        // Only LRA annotations concern us
+        if(result.stream()
+                .map(AnnotationInstance::name)
+                .noneMatch(LRA_ANNOTATIONS::contains)){
+            return Set.of();
+        }
+
+        // Compensate can't be accompanied by class level LRA
         if (annotations.containsKey(COMPENSATE.toString())) {
-            // compensate can't be accompanied by class level LRA
             return result;
         }
 
@@ -140,7 +159,7 @@ public class InspectionService {
         }
 
         public LRA.Type value() {
-            return LRA.Type.valueOf(values.get("value").asEnum());
+            return org.eclipse.microprofile.lra.annotation.ws.rs.LRA.Type.valueOf(values.get("value").asEnum());
         }
 
         public long timeLimit() {

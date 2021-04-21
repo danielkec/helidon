@@ -24,7 +24,6 @@ public class LRAThreadContext {
     static ThreadLocal<LRAThreadContext> threadLocal = new ThreadLocal<>();
 
     private URI lra;
-    private boolean ending = true;
 
     static synchronized LRAThreadContext get() {
         LRAThreadContext instance = threadLocal.get();
@@ -45,13 +44,5 @@ public class LRAThreadContext {
 
     public Optional<URI> lra() {
         return Optional.ofNullable(lra);
-    }
-
-    public boolean ending() {
-        return ending;
-    }
-
-    public void ending(boolean ending) {
-        this.ending = ending;
     }
 }

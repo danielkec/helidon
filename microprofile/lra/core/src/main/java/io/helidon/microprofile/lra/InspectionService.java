@@ -18,23 +18,26 @@
 package io.helidon.microprofile.lra;
 
 import java.lang.reflect.Method;
+import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.inject.spi.DeploymentException;
 import javax.inject.Inject;
+import javax.ws.rs.core.Response;
 
 import org.eclipse.microprofile.lra.annotation.Compensate;
 import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
 import org.jboss.jandex.AnnotationInstance;
+import org.jboss.jandex.AnnotationValue;
 import org.jboss.jandex.ClassInfo;
 import org.jboss.jandex.DotName;
-import org.jboss.jandex.Index;
 import org.jboss.jandex.IndexView;
 import org.jboss.jandex.MethodInfo;
 import org.jboss.jandex.Type;
@@ -43,6 +46,7 @@ import org.jboss.jandex.Type;
 public class InspectionService {
 
     private final IndexView index;
+    private static final DotName COMPENSATE = DotName.createSimple(Compensate.class.getName());
 
     @Inject
     public InspectionService(LRACdiExtension lraCdiExtension) {
@@ -68,7 +72,7 @@ public class InspectionService {
         deepScanLraMethod(declaringClazz, annotations, methodInfo.name(), methodInfo.parameters().toArray(new Type[0]));
         HashSet<AnnotationInstance> result = new HashSet<>(annotations.values());
 
-        if (annotations.containsKey(DotName.createSimple(Compensate.class.getName()).toString())) {
+        if (annotations.containsKey(COMPENSATE.toString())) {
             // compensate can't be accompanied by class level LRA
             return result;
         }
@@ -84,6 +88,7 @@ public class InspectionService {
     public IndexView index() {
         return index;
     }
+
 
     AnnotationInstance deepScanClassLevelLraAnnotation(ClassInfo classInfo) {
         if (classInfo == null) return null;
@@ -119,6 +124,47 @@ public class InspectionService {
         // implements
         for (DotName interfaceName : classInfo.interfaceNames()) {
             deepScanLraMethod(index.getClassByName(interfaceName), annotations, methodName, parameters);
+        }
+    }
+
+    Lra lraAnnotation(AnnotationInstance annotationInstance) {
+        return new Lra(annotationInstance, index);
+    }
+
+    static class Lra {
+        private final Map<String, AnnotationValue> values;
+
+        private Lra(AnnotationInstance annotationInstance, IndexView indexView) {
+            values = annotationInstance.valuesWithDefaults(indexView).stream()
+                    .collect(Collectors.toMap(AnnotationValue::name, Function.identity()));
+        }
+
+        public LRA.Type value() {
+            return LRA.Type.valueOf(values.get("value").asEnum());
+        }
+
+        public long timeLimit() {
+            return values.get("timeLimit").asLong();
+        }
+
+        public ChronoUnit timeUnit() {
+            return ChronoUnit.valueOf(values.get("timeUnit").asEnum());
+        }
+
+        public boolean end() {
+            return values.get("end").asBoolean();
+        }
+
+        public Set<Response.Status.Family> cancelOnFamily() {
+            return Arrays.stream(values.get("cancelOnFamily").asEnumArray())
+                    .map(Response.Status.Family::valueOf)
+                    .collect(Collectors.toSet());
+        }
+
+        public Set<Response.Status> cancelOn() {
+            return Arrays.stream(values.get("cancelOn").asEnumArray())
+                    .map(Response.Status::valueOf)
+                    .collect(Collectors.toSet());
         }
     }
 }

@@ -30,21 +30,18 @@ import javax.ws.rs.core.Response;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVERY_HEADER;
 
-import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
 import org.jboss.jandex.AnnotationInstance;
 
 class LRAAnnotationHandler implements AnnotationHandler {
 
     private static final Logger LOGGER = Logger.getLogger(LRAAnnotationHandler.class.getName());
 
-    private final AnnotationInstance annotation;
+    private final InspectionService.Lra annotation;
     private final CoordinatorClient coordinatorClient;
-    private final InspectionService inspectionService;
 
     LRAAnnotationHandler(AnnotationInstance annotation, CoordinatorClient coordinatorClient, InspectionService inspectionService) {
-        this.annotation = annotation;
+        this.annotation = inspectionService.lraAnnotation(annotation);
         this.coordinatorClient = coordinatorClient;
-        this.inspectionService = inspectionService;
     }
 
     @Override
@@ -53,11 +50,11 @@ class LRAAnnotationHandler implements AnnotationHandler {
         var baseUri = reqCtx.getUriInfo().getBaseUri();
         var participant = Participant.get(baseUri, resourceInfo.getResourceClass());
         var existingLraId = LRAThreadContext.get().lra();
-        var timeLimit = annotation.valueWithDefault(inspectionService.index(), "timeLimit").asLong();
-        var end = annotation.valueWithDefault(inspectionService.index(), "end").asBoolean();
+        var timeLimit = annotation.timeLimit();
+        var end = annotation.end();
 
         URI lraId = null;
-        switch (LRA.Type.valueOf(annotation.valueWithDefault(inspectionService.index(), "value").asString())) {
+        switch (annotation.value()) {
             case NEVER:
                 if (reqCtx.getHeaders().getFirst(LRA_HTTP_CONTEXT_HEADER) != null) {
                     // If called inside an LRA context, i.e., the method is not executed 
@@ -119,11 +116,13 @@ class LRAAnnotationHandler implements AnnotationHandler {
         Optional<URI> lraId = Optional.ofNullable((URI) requestContext.getProperty("lra.id"))
                 .or(() -> LRAThreadContext.get().lra());
 
-        boolean end = Optional.ofNullable(requestContext.getProperty("lra.end"))
-                .map(o -> Boolean.valueOf((Boolean) o))
-                .orElseGet(LRAThreadContext.get()::ending);
+        var end = annotation.end();
+        var cancelOnFamilies = annotation.cancelOnFamily();
+        var cancelOnStatuses = annotation.cancelOn();
 
-        if (lraId.isPresent() && responseContext.getStatus() == 500) {
+        if (lraId.isPresent()
+                && (cancelOnFamilies.contains(responseContext.getStatusInfo().getFamily())
+                || cancelOnStatuses.contains(responseContext.getStatusInfo().toEnum()))) {
             LOGGER.info("Cancelling LRA " + lraId.get());
             coordinatorClient.cancel(lraId.get());
             LRAThreadContext.clear();

@@ -17,19 +17,26 @@ package io.helidon.microprofile.lra;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Modifier;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletionStage;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 import javax.annotation.Priority;
 import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.context.Initialized;
+import javax.enterprise.context.spi.CreationalContext;
 import javax.enterprise.event.Observes;
+import javax.enterprise.inject.spi.Bean;
 import javax.enterprise.inject.spi.BeanManager;
+import javax.enterprise.inject.spi.DeploymentException;
 import javax.enterprise.inject.spi.Extension;
 import javax.enterprise.inject.spi.ProcessAnnotatedType;
 import javax.enterprise.inject.spi.WithAnnotations;
@@ -38,6 +45,7 @@ import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
+import javax.ws.rs.core.Response;
 
 import static javax.interceptor.Interceptor.Priority.PLATFORM_AFTER;
 
@@ -45,14 +53,17 @@ import org.eclipse.microprofile.lra.annotation.AfterLRA;
 import org.eclipse.microprofile.lra.annotation.Compensate;
 import org.eclipse.microprofile.lra.annotation.Complete;
 import org.eclipse.microprofile.lra.annotation.Forget;
+import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
 import org.eclipse.microprofile.lra.annotation.Status;
 import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
+import org.jboss.jandex.AnnotationInstance;
 import org.jboss.jandex.ClassInfo;
 import org.jboss.jandex.CompositeIndex;
 import org.jboss.jandex.DotName;
 import org.jboss.jandex.IndexReader;
 import org.jboss.jandex.IndexView;
 import org.jboss.jandex.Indexer;
+import org.jboss.jandex.MethodInfo;
 
 public class LRACdiExtension implements Extension {
 
@@ -107,9 +118,61 @@ public class LRACdiExtension implements Extension {
             @Priority(PLATFORM_AFTER + 101)
             @Initialized(ApplicationScoped.class) Object event,
             BeanManager beanManager) {
-        // compile time bilt index 
-        if (index != null) return;
-        index = indexer.complete();
+
+        if (index == null) {
+            // compile time built index 
+            index = indexer.complete();
+        }
+
+        // Validate LRA methods
+        // TODO: Clean up and externalize
+        InspectionService inspectionService =
+                lookup(beanManager.resolve(beanManager.getBeans(InspectionService.class)), beanManager);
+
+        for (ClassInfo classInfo : index.getKnownClasses()) {
+            Map<MethodInfo, Set<AnnotationInstance>> lraMethods = inspectionService.lookUpLraMethods(classInfo);
+
+            if (lraMethods.isEmpty()) {
+                // no lra methods
+                continue;
+            }
+
+            if (Modifier.isInterface(classInfo.flags()) || Modifier.isAbstract(classInfo.flags())) {
+                // skip
+                continue;
+            }
+
+            Set<DotName> mandatoryAnnotations = Set.of(InspectionService.COMPENSATE, InspectionService.AFTER_LRA);
+            if (lraMethods.values().stream()
+                    .flatMap(Set::stream)
+                    .map(AnnotationInstance::name)
+                    .noneMatch(mandatoryAnnotations::contains)) {
+                throw new DeploymentException("Missing  @Compensate or @AfterLRA on class " + classInfo);
+            }
+
+            Set<DotName> returnTypes = Set.of(
+                    Response.class,
+                    ParticipantStatus.class,
+                    CompletionStage.class,
+                    void.class
+            ).stream()
+                    .map(Class::getName)
+                    .map(DotName::createSimple)
+                    .collect(Collectors.toSet());
+            lraMethods.forEach((m, a) -> {
+                if (a.stream().map(AnnotationInstance::name).anyMatch(InspectionService.COMPENSATE::equals)) {
+                    if (!returnTypes.contains(m.returnType().name())) {
+                        throw new DeploymentException("Invalid return type " + m.returnType() + " of compensating method " + m.name());
+                    }
+                }
+                if (a.stream().map(AnnotationInstance::name).anyMatch(InspectionService.AFTER_LRA::equals)) {
+                    if (!returnTypes.contains(m.returnType().name())) {
+                        throw new DeploymentException("Invalid return type " + m.returnType() + " of after method " + m.name());
+                    }
+                }
+            });
+
+        }
     }
 
     void runtimeIndex(DotName fqdn) {
@@ -154,5 +217,19 @@ public class LRACdiExtension implements Extension {
 
     public IndexView getIndex() {
         return index;
+    }
+
+    @SuppressWarnings("unchecked")
+    static <T> T lookup(Bean<?> bean, BeanManager beanManager) {
+        javax.enterprise.context.spi.Context context = beanManager.getContext(bean.getScope());
+        Object instance = context.get(bean);
+        if (instance == null) {
+            CreationalContext<?> creationalContext = beanManager.createCreationalContext(bean);
+            instance = beanManager.getReference(bean, bean.getBeanClass(), creationalContext);
+        }
+        if (instance == null) {
+            throw new DeploymentException("Instance of bean " + bean.getName() + " not found");
+        }
+        return (T) instance;
     }
 }

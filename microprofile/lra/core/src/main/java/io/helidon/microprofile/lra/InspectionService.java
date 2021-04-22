@@ -19,13 +19,17 @@ package io.helidon.microprofile.lra;
 
 import java.lang.reflect.Method;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.inject.spi.DeploymentException;
@@ -51,22 +55,75 @@ import org.jboss.jandex.Type;
 public class InspectionService {
 
     private final IndexView index;
-    private static final DotName LRA = DotName.createSimple(LRA.class.getName());
-    private static final DotName LEAVE = DotName.createSimple(Leave.class.getName());
-    private static final DotName AFTER_LRA = DotName.createSimple(AfterLRA.class.getName());
-    private static final DotName COMPLETE = DotName.createSimple(Complete.class.getName());
-    private static final DotName COMPENSATE = DotName.createSimple(Compensate.class.getName());
-    private static final DotName FORGET = DotName.createSimple(Forget.class.getName());
-    private static final DotName STATUS = DotName.createSimple(Status.class.getName());
-    private static final Set<DotName> LRA_ANNOTATIONS = Set.of(LRA, LEAVE, AFTER_LRA, COMPLETE, COMPENSATE, FORGET, STATUS);
+    static final DotName LRA = DotName.createSimple(LRA.class.getName());
+    static final DotName LEAVE = DotName.createSimple(Leave.class.getName());
+    static final DotName AFTER_LRA = DotName.createSimple(AfterLRA.class.getName());
+    static final DotName COMPLETE = DotName.createSimple(Complete.class.getName());
+    static final DotName COMPENSATE = DotName.createSimple(Compensate.class.getName());
+    static final DotName FORGET = DotName.createSimple(Forget.class.getName());
+    static final DotName STATUS = DotName.createSimple(Status.class.getName());
+    static final Set<DotName> LRA_ANNOTATIONS = Set.of(LRA, LEAVE, AFTER_LRA, COMPLETE, COMPENSATE, FORGET, STATUS);
 
     @Inject
     public InspectionService(LRACdiExtension lraCdiExtension) {
         this.index = lraCdiExtension.getIndex();
     }
 
+    /**
+     * Resolve all methods with LRA annotations directly on methods or inherited from interfaces, parents of enclosing classes.
+     */
+    public Map<MethodInfo, Set<AnnotationInstance>> lookUpLraMethods(ClassInfo classInfo) {
+        Map<MethodInfo, Set<AnnotationInstance>> result = new HashMap<>();
+        List<ClassInfo> classHierarchy = getAllParents(classInfo);
+        classHierarchy.add(0, classInfo);
+        for (ClassInfo clazz : classHierarchy) {
+            for (MethodInfo method : getAllDeclaredMethods(clazz)) {
+                Set<AnnotationInstance> lraAnnotations = lookUpLraAnnotations(method);
+                if (!lraAnnotations.isEmpty()) {
+                    result.put(method, lraAnnotations);
+                }
+            }
+        }
+        return result;
+    }
+
+    List<ClassInfo> getAllParents(ClassInfo classInfo) {
+        List<ClassInfo> superClasses = new ArrayList<>();
+
+        // extends
+        DotName superClassName = classInfo.superName();
+        while (superClassName != null) {
+            ClassInfo superClass = index.getClassByName(superClassName);
+            if (superClass == null) break;
+            superClasses.add(superClass);
+            superClassName = superClass.superName();
+        }
+
+        // implements
+        for (DotName implementedInterfaceName : classInfo.interfaceNames()) {
+            ClassInfo interfaceClass = index.getClassByName(implementedInterfaceName);
+            superClasses.addAll(getAllParents(interfaceClass));
+        }
+
+        return superClasses;
+    }
+
+    Set<MethodInfo> getAllDeclaredMethods(ClassInfo classInfo) {
+        return Stream.of(
+                List.of(classInfo.name()),
+                classInfo.interfaceNames(),
+                Optional.ofNullable(classInfo.superName())
+                        .map(List::of)
+                        .orElseGet(List::of)
+        )
+                .flatMap(List::stream)
+                .map(index::getClassByName)
+                .map(ClassInfo::methods)
+                .flatMap(List::stream)
+                .collect(Collectors.toSet());
+    }
+
     public Set<AnnotationInstance> lookUpLraAnnotations(Method method) {
-        Map<String, AnnotationInstance> annotations = new HashMap<>();
         ClassInfo declaringClazz = index.getClassByName(DotName.createSimple(method.getDeclaringClass().getName()));
         if (declaringClazz == null) {
             throw new DeploymentException("Can't find indexed declaring class of method " + method);
@@ -81,13 +138,18 @@ public class InspectionService {
                 .findFirst()
                 .orElseThrow(() -> new DeploymentException("LRA method " + method
                         + " not found indexed in class " + declaringClazz.name()));
-        deepScanLraMethod(declaringClazz, annotations, methodInfo.name(), methodInfo.parameters().toArray(new Type[0]));
+        return lookUpLraAnnotations(methodInfo);
+    }
+
+    public Set<AnnotationInstance> lookUpLraAnnotations(MethodInfo methodInfo) {
+        Map<String, AnnotationInstance> annotations = new HashMap<>();
+        deepScanLraMethod(methodInfo.declaringClass(), annotations, methodInfo.name(), methodInfo.parameters().toArray(new Type[0]));
         HashSet<AnnotationInstance> result = new HashSet<>(annotations.values());
 
         // Only LRA annotations concern us
-        if(result.stream()
+        if (result.stream()
                 .map(AnnotationInstance::name)
-                .noneMatch(LRA_ANNOTATIONS::contains)){
+                .noneMatch(LRA_ANNOTATIONS::contains)) {
             return Set.of();
         }
 
@@ -96,7 +158,7 @@ public class InspectionService {
             return result;
         }
 
-        AnnotationInstance classLevelLraAnnotation = deepScanClassLevelLraAnnotation(declaringClazz);
+        AnnotationInstance classLevelLraAnnotation = deepScanClassLevelLraAnnotation(methodInfo.declaringClass());
         if (classLevelLraAnnotation != null) {
             // add class level @LRA only if not declared by method
             result.add(classLevelLraAnnotation);

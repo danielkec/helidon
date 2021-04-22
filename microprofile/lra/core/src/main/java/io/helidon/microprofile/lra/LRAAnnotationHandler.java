@@ -60,7 +60,7 @@ class LRAAnnotationHandler implements AnnotationHandler {
                 if (existingLraId.isPresent()) {
                     reqCtx.getHeaders().putSingle(LRA_HTTP_PARENT_CONTEXT_HEADER, existingLraId.get().toASCIIString());
                     reqCtx.setProperty("suppressed.lra", existingLraId.get());
-                    lraId = coordinatorClient.start(null, method.getDeclaringClass().getName() + "#" + method.getName(), timeLimit);
+                    lraId = coordinatorClient.start(existingLraId.get(), method.getDeclaringClass().getName() + "#" + method.getName(), timeLimit);
                     LOGGER.info("Coordinator confirmed started LRA " + lraId);
                     URI recoveryUri = coordinatorClient.join(lraId, timeLimit, participant);
                     reqCtx.getHeaders().add(LRA_HTTP_RECOVERY_HEADER, recoveryUri.toASCIIString());

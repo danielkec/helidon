@@ -41,8 +41,6 @@ import org.eclipse.microprofile.lra.annotation.Complete;
 import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
 import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
 
-import io.helidon.common.reactive.Single;
-
 @ApplicationScoped
 public class TestApplication extends Application {
     
@@ -52,7 +50,7 @@ public class TestApplication extends Application {
     }
 
     @Path("/start-and-close")
-    public static class StartAndClose {
+    public static class StartAndClose extends CommonAfter{
 
         @Inject
         BasicTest basicTest;
@@ -88,7 +86,7 @@ public class TestApplication extends Application {
 
     @ApplicationScoped
     @Path("/dont-end")
-    public static class DontEnd {
+    public static class DontEnd extends CommonAfter{
 
         @Inject
         BasicTest basicTest;

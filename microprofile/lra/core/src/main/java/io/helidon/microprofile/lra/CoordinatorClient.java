@@ -15,13 +15,11 @@
  */
 package io.helidon.microprofile.lra;
 
-import org.eclipse.microprofile.lra.annotation.LRAStatus;
-
 import java.net.URI;
-import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 
 import javax.ws.rs.WebApplicationException;
+
+import org.eclipse.microprofile.lra.annotation.LRAStatus;
 
 public interface CoordinatorClient {
 

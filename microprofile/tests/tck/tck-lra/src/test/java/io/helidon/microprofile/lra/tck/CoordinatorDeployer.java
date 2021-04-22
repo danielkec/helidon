@@ -8,7 +8,6 @@ import javax.enterprise.inject.spi.CDI;
 
 import io.helidon.microprofile.arquillian.HelidonContainerConfiguration;
 import io.helidon.microprofile.arquillian.HelidonDeployableContainer;
-import io.helidon.microprofile.lra.coordinator.Coordinator;
 
 import org.jboss.arquillian.container.spi.Container;
 import org.jboss.arquillian.container.spi.client.container.DeploymentException;

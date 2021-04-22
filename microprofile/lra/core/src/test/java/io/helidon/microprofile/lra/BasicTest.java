@@ -23,6 +23,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import javax.inject.Inject;
+import javax.ws.rs.NotFoundException;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.Response;
@@ -59,12 +60,14 @@ import org.junit.jupiter.api.Test;
 @AddExtension(LRACdiExtension.class)
 @AddExtension(CdiComponentProvider.class)
 @AddBean(NarayanaClient.class)
+@AddBean(NarayanaAdapter.class)
 @AddBean(InspectionService.class)
 @AddBean(TestApplication.class)
 @AddBean(TestApplication.StartAndClose.class)
 @AddBean(TestApplication.StartAndAfter.class)
 @AddBean(TestApplication.DontEnd.class)
 @AddBean(TestApplication.Timeout.class)
+
 @AddBean(Coordinator.class)
 @AddBean(CoordinatorApplication.class)
 @AddConfig(key = "io.helidon.microprofile.lra.coordinator.CoordinatorApplication."
@@ -138,7 +141,7 @@ public class BasicTest {
                 .put(Entity.text(""))
                 .get(10, TimeUnit.SECONDS).getStatus(), AnyOf.anyOf(is(200), is(204)));
         getCompletable("second-ending").get(10, TimeUnit.SECONDS);
-        assertThat(coordinatorClient.status(lraId), is(LRAStatus.Closed));
+        assertClosedOrNotFound(lraId);
     }
 
     @Test
@@ -152,5 +155,13 @@ public class BasicTest {
         assertThat(response.getStatus(), is(200));
         getCompletable("timeout").get(5, TimeUnit.SECONDS);
         getCompletable("timeout-compensated").get(5, TimeUnit.SECONDS);
+    }
+
+    private void assertClosedOrNotFound(URI lraId) {
+        try {
+            assertThat(coordinatorClient.status(lraId), is(LRAStatus.Closed));
+        } catch (NotFoundException e) {
+            
+        }
     }
 }

@@ -49,6 +49,9 @@ public class JaxrsServerFilter implements ContainerRequestFilter, ContainerRespo
 
     @Inject
     CoordinatorClient coordinatorClient;
+    
+    @Inject
+    CoordinatorFilteringAdapter coordinatorFilteringAdapter;
 
     @Inject
     InspectionService inspectionService;
@@ -63,6 +66,9 @@ public class JaxrsServerFilter implements ContainerRequestFilter, ContainerRespo
                     .map(h -> UriBuilder.fromPath(requestContext.getHeaders().getFirst(LRA_HTTP_CONTEXT_HEADER)).build())
                     .ifPresent(lraId -> LRAThreadContext.get().lra(lraId));
 
+            // Adapt JaxRs calls to specific coordinator
+            coordinatorFilteringAdapter.handleJaxrsBefore(requestContext, resourceInfo);
+            
             // select current lra annotation handler and process
             for (AnnotationHandler handler : AnnotationHandler.create(method, inspectionService, coordinatorClient)) {
                 handler.handleJaxrsBefore(requestContext, resourceInfo);
@@ -84,6 +90,9 @@ public class JaxrsServerFilter implements ContainerRequestFilter, ContainerRespo
                 return;
             }
 
+            // Adapt JaxRs calls to specific coordinator
+            coordinatorFilteringAdapter.handleJaxrsAfter(requestContext, responseContext, resourceInfo);
+            
             // select current lra annotation handler and process
             for (AnnotationHandler handler : AnnotationHandler.create(method, inspectionService, coordinatorClient)) {
                 handler.handleJaxrsAfter(requestContext, responseContext, resourceInfo);

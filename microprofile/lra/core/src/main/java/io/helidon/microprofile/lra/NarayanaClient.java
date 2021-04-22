@@ -26,7 +26,6 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import javax.enterprise.context.ApplicationScoped;
-import javax.ws.rs.NotFoundException;
 import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.client.ClientBuilder;
 import javax.ws.rs.client.Entity;
@@ -35,7 +34,6 @@ import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriBuilder;
 
 import static javax.ws.rs.core.Response.Status.GONE;
-import static javax.ws.rs.core.Response.Status.NOT_FOUND;
 import static javax.ws.rs.core.Response.Status.PRECONDITION_FAILED;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVERY_HEADER;
 
@@ -72,7 +70,7 @@ public class NarayanaClient implements CoordinatorClient {
                 throw new WebApplicationException("Unexpected response " + response.getStatus() + " from coordinator "
                         + (response.hasEntity() ? response.readEntity(String.class) : ""));
             }
-            return UriBuilder.fromPath("LRAID" + response.getHeaderString(HttpHeaders.LOCATION).split("LRAID")[1]).build();
+            return UriBuilder.fromPath(response.getHeaderString(HttpHeaders.LOCATION).replaceFirst(".*/","")).build();
         } catch (InterruptedException | ExecutionException | TimeoutException e) {
             throw new WebApplicationException("Unable to start LRA", e);
         }
@@ -92,7 +90,7 @@ public class NarayanaClient implements CoordinatorClient {
 
             switch (response.getStatus()) {
                 case 404:
-                    throw new NotFoundException("NOTFOUND", Response.status(NOT_FOUND).entity(lraId.toASCIIString()).build());
+                    LOGGER.warning("Cancel LRA - Coordinator can't find LRAID: "+ lraId.toASCIIString());
                 case 200:
                 case 202:
                     break;
@@ -117,14 +115,14 @@ public class NarayanaClient implements CoordinatorClient {
 
             switch (response.getStatus()) {
                 case 404:
-                    throw new NotFoundException("NOTFOUND", Response.status(NOT_FOUND).entity(lraId.toASCIIString()).build());
+                    LOGGER.warning("Closing LRA - Coordinator can't find LRAID: "+ lraId.toASCIIString());
                 case 200:
                 case 202:
                     break;
                 default:
             }
         } catch (InterruptedException | ExecutionException | TimeoutException e) {
-            throw new WebApplicationException("Unable to start LRA", e);
+            throw new WebApplicationException("Unable to close LRA", e);
         }
     }
 
@@ -186,7 +184,7 @@ public class NarayanaClient implements CoordinatorClient {
 
             switch (response.getStatus()) {
                 case 404:
-                    throw new NotFoundException("NOTFOUND", Response.status(NOT_FOUND).entity(lraId.toASCIIString()).build());
+                    LOGGER.warning("Leaving LRA - Coordinator can't find LRAID: "+ lraId.toASCIIString());
                 case 200:
                     return;
                 default:
@@ -213,7 +211,8 @@ public class NarayanaClient implements CoordinatorClient {
 
             switch (response.getStatus()) {
                 case 404:
-                    throw new NotFoundException("NOTFOUND", Response.status(NOT_FOUND).entity(lraId.toASCIIString()).build());
+                    LOGGER.warning("Status LRA - Coordinator can't find LRAID: "+ lraId.toASCIIString());
+                    return LRAStatus.Closed;
                 case 200:
                 case 202:
                     return response.readEntity(LRAStatus.class);

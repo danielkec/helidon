@@ -221,9 +221,13 @@ public class Coordinator {
                 lraPersistentRegistry.remove(lra.lraId);
             } else {
                 synchronized (this) {
-                    if (Set.of(LRAStatus.Cancelling, LRAStatus.Closing).contains(lra.status().get())) {
+                    if (LRAStatus.Cancelling == lra.status().get()) {
                         LOGGER.log(Level.INFO, "Recovering {0}", lra.lraId);
-                        lra.terminate();
+                        lra.cancel();
+                    }
+                    if (LRAStatus.Closing == lra.status().get()) {
+                        LOGGER.log(Level.INFO, "Recovering {0}", lra.lraId);
+                        lra.close();
                     }
                     if (lra.checkTimeout() && lra.status().get().equals(LRAStatus.Active)) {
                         LOGGER.log(Level.INFO, "Timeouting {0} ", lra.lraId);

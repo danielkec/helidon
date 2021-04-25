@@ -144,7 +144,8 @@ public class LRA {
     }
 
     void close() {
-        if (!status.compareAndSet(LRAStatus.Active, LRAStatus.Closing)) {
+        Set<LRAStatus> allowedStatuses = Set.of(LRAStatus.Active, LRAStatus.Closing);
+        if (LRAStatus.Closing != status.updateAndGet(old -> allowedStatuses.contains(old) ? LRAStatus.Closing : old)) {
             LOGGER.warning("Can't close LRA, it's already " + status.get().name() + " " + this.lraId);
             return;
         }

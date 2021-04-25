@@ -149,12 +149,23 @@ public class TestApplication extends Application {
         BasicTest basicTest;
 
         @PUT
-        @Path("start")
+        @Path("start-compensate")
         @LRA(value = LRA.Type.REQUIRES_NEW, timeLimit = 500, timeUnit = ChronoUnit.MILLIS)
-        public Response startLRA(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
-                                 @HeaderParam(LRA_HTTP_RECOVERY_HEADER) URI recoveryId) {
+        public Response startCompensateLRA(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
+                                           @HeaderParam(LRA_HTTP_RECOVERY_HEADER) URI recoveryId) {
             // Force to compensate
             return Response.serverError()
+                    .header(LRA_HTTP_CONTEXT_HEADER, lraId.toASCIIString())
+                    .header(LRA_HTTP_RECOVERY_HEADER, recoveryId.toASCIIString())
+                    .build();
+        }
+
+        @PUT
+        @Path("start-complete")
+        @LRA(value = LRA.Type.REQUIRES_NEW, timeLimit = 500, timeUnit = ChronoUnit.MILLIS)
+        public Response startCompleteLRA(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
+                                         @HeaderParam(LRA_HTTP_RECOVERY_HEADER) URI recoveryId) {
+            return Response.ok()
                     .header(LRA_HTTP_CONTEXT_HEADER, lraId.toASCIIString())
                     .header(LRA_HTTP_RECOVERY_HEADER, recoveryId.toASCIIString())
                     .build();
@@ -164,8 +175,8 @@ public class TestApplication extends Application {
         @Path("/compensate")
         @Produces(MediaType.APPLICATION_JSON)
         @Compensate
-        public Response compensateWork(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
-                                       @HeaderParam(LRA_HTTP_RECOVERY_HEADER) URI recoveryId) {
+        public Response compensateLRA(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
+                                      @HeaderParam(LRA_HTTP_RECOVERY_HEADER) URI recoveryId) {
 
             CompletableFuture<URI> completable = basicTest.getCompletable("recovery-compensated-first");
             boolean secondCall = completable.isDone();
@@ -176,6 +187,24 @@ public class TestApplication extends Application {
                 return LRAResponse.failedToCompensate();
             }
             return LRAResponse.compensated();
+        }
+
+        @PUT
+        @Path("/complete")
+        @Produces(MediaType.APPLICATION_JSON)
+        @Complete
+        public Response completeLRA(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
+                                    @HeaderParam(LRA_HTTP_RECOVERY_HEADER) URI recoveryId) {
+
+            CompletableFuture<URI> completable = basicTest.getCompletable("recovery-completed-first");
+            boolean secondCall = completable.isDone();
+            completable.complete(lraId);
+            if (secondCall) {
+                basicTest.getCompletable("recovery-completed-second").complete(lraId);
+            } else {
+                return LRAResponse.failedToComplete();
+            }
+            return LRAResponse.completed();
         }
     }
 

@@ -168,23 +168,43 @@ public class BasicTest {
     }
 
     @Test
-    void recoveryTest(WebTarget target) throws ExecutionException, InterruptedException, TimeoutException {
+    void compensateRecoveryTest(WebTarget target) throws ExecutionException, InterruptedException, TimeoutException {
         LocalDateTime start = LocalDateTime.now();
         Response response = target.path("recovery")
-                .path("start")
+                .path("start-compensate")
                 .request()
                 .async()
                 .put(Entity.text(""))
                 .get(5, TimeUnit.SECONDS);
         assertThat(response.getStatus(), is(500));
         URI lraId = UriBuilder.fromPath(response.getHeaderString(LRA_HTTP_CONTEXT_HEADER)).build();
-        assertThat(getCompletable("recovery-compensated-first").get(2, TimeUnit.SECONDS), is(lraId));
+        assertThat(getCompletable("recovery-compensated-first").get(5, TimeUnit.SECONDS), is(lraId));
         LocalDateTime first = LocalDateTime.now();
         System.out.println("First compensate attempt after " + Duration.between(start, first));
         waitForRecovery(lraId);
         assertThat(getCompletable("recovery-compensated-second").get(8, TimeUnit.SECONDS), is(lraId));
         LocalDateTime second = LocalDateTime.now();
         System.out.println("Second compensate attempt after " + Duration.between(first, second));
+    }
+
+    @Test
+    void completeRecoveryTest(WebTarget target) throws ExecutionException, InterruptedException, TimeoutException {
+        LocalDateTime start = LocalDateTime.now();
+        Response response = target.path("recovery")
+                .path("start-complete")
+                .request()
+                .async()
+                .put(Entity.text(""))
+                .get(5, TimeUnit.SECONDS);
+        assertThat(response.getStatus(), is(200));
+        URI lraId = UriBuilder.fromPath(response.getHeaderString(LRA_HTTP_CONTEXT_HEADER)).build();
+        assertThat(getCompletable("recovery-completed-first").get(2, TimeUnit.SECONDS), is(lraId));
+        LocalDateTime first = LocalDateTime.now();
+        System.out.println("First complete attempt after " + Duration.between(start, first));
+        waitForRecovery(lraId);
+        assertThat(getCompletable("recovery-completed-second").get(8, TimeUnit.SECONDS), is(lraId));
+        LocalDateTime second = LocalDateTime.now();
+        System.out.println("Second complete attempt after " + Duration.between(first, second));
     }
 
     private void assertClosedOrNotFound(URI lraId) {
@@ -194,15 +214,7 @@ public class BasicTest {
             // in case coordinator don't retain closed lra long enough
         }
     }
-
-    private void sleep() {
-        try {
-            Thread.sleep(5000);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
-
+    
     private void waitForRecovery(URI lraId) {
         for (int i = 0; i < 10; i++) {
             try {

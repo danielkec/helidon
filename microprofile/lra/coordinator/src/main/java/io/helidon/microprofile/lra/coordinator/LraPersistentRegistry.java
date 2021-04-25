@@ -35,6 +35,7 @@ import javax.xml.bind.annotation.XmlAccessorType;
 import javax.xml.bind.annotation.XmlRootElement;
 
 import org.eclipse.microprofile.lra.annotation.LRAStatus;
+import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
 
 @XmlRootElement
 @XmlAccessorType(XmlAccessType.FIELD)
@@ -67,8 +68,13 @@ public class LraPersistentRegistry {
     synchronized void load() {
         try {
             if (Files.exists(registry)) {
-                JAXBContext context = JAXBContext.newInstance(LraPersistentRegistry.class, LRA.class, Participant.class,
-                        LRAStatus.class);
+                JAXBContext context = JAXBContext.newInstance(
+                        LraPersistentRegistry.class, 
+                        LRA.class, 
+                        Participant.class,
+                        LRAStatus.class,
+                        Participant.AfterLraStatus.class,
+                        ParticipantStatus.class);
                 Unmarshaller unmarshaller = context.createUnmarshaller();
                 unmarshaller.setAdapter(new Link.JaxbAdapter());
                 LraPersistentRegistry lraPersistentRegistry = (LraPersistentRegistry) unmarshaller.unmarshal(registry.toFile());
@@ -89,8 +95,13 @@ public class LraPersistentRegistry {
 
     synchronized void save() {
         try {
-            JAXBContext context = JAXBContext.newInstance(LraPersistentRegistry.class,
-                    LRA.class, Participant.class, LRAStatus.class);
+            JAXBContext context = JAXBContext.newInstance(
+                    LraPersistentRegistry.class,
+                    LRA.class, 
+                    Participant.class, 
+                    LRAStatus.class,
+                    Participant.AfterLraStatus.class,
+                    ParticipantStatus.class);
             Marshaller mar = context.createMarshaller();
             mar.setAdapter(new Link.JaxbAdapter());
             mar.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, Boolean.TRUE);

@@ -30,6 +30,7 @@ public class CoordinatorDeployer {
         HelidonDeployableContainer helidonContainer = (HelidonDeployableContainer) container.getDeployableContainer();
         HelidonContainerConfiguration containerConfig = helidonContainer.getContainerConfig();
 
+        containerConfig.set("lra.tck.coordinator.persist", "true");
         containerConfig.set("server.sockets.0.name", "coordinator");
         containerConfig.set("server.sockets.0.port", "8070");
         containerConfig.set("server.sockets.0.bind-address", "localhost");

@@ -16,22 +16,29 @@
 package io.helidon.microprofile.lra;
 
 import java.net.URI;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import javax.inject.Inject;
 import javax.ws.rs.NotFoundException;
+import javax.ws.rs.client.ClientBuilder;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.UriBuilder;
 
 import io.helidon.common.configurable.ScheduledThreadPoolSupplier;
 import io.helidon.microprofile.config.ConfigCdiExtension;
 import io.helidon.microprofile.lra.coordinator.Coordinator;
 import io.helidon.microprofile.lra.coordinator.CoordinatorApplication;
+import io.helidon.microprofile.scheduling.SchedulingCdiExtension;
 import io.helidon.microprofile.server.JaxRsCdiExtension;
 import io.helidon.microprofile.server.RoutingName;
 import io.helidon.microprofile.server.ServerCdiExtension;
@@ -50,6 +57,7 @@ import org.glassfish.jersey.ext.cdi1x.internal.CdiComponentProvider;
 import org.hamcrest.core.AnyOf;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 @HelidonTest
@@ -67,9 +75,11 @@ import org.junit.jupiter.api.Test;
 @AddBean(TestApplication.StartAndAfter.class)
 @AddBean(TestApplication.DontEnd.class)
 @AddBean(TestApplication.Timeout.class)
+@AddBean(TestApplication.Recovery.class)
 
 @AddBean(Coordinator.class)
 @AddBean(CoordinatorApplication.class)
+@AddExtension(SchedulingCdiExtension.class)
 @AddConfig(key = "io.helidon.microprofile.lra.coordinator.CoordinatorApplication."
         + RoutingName.CONFIG_KEY_NAME, value = "coordinator")
 @AddConfig(key = "server.sockets.0.name", value = "coordinator1")
@@ -87,7 +97,7 @@ public class BasicTest {
 
     @Inject
     CoordinatorClient coordinatorClient;
-    
+
     @BeforeAll
     static void beforeAll() {
         executor = ScheduledThreadPoolSupplier.create().get();
@@ -157,11 +167,63 @@ public class BasicTest {
         getCompletable("timeout-compensated").get(5, TimeUnit.SECONDS);
     }
 
+    @Test
+    void recoveryTest(WebTarget target) throws ExecutionException, InterruptedException, TimeoutException {
+        LocalDateTime start = LocalDateTime.now();
+        Response response = target.path("recovery")
+                .path("start")
+                .request()
+                .async()
+                .put(Entity.text(""))
+                .get(5, TimeUnit.SECONDS);
+        assertThat(response.getStatus(), is(500));
+        URI lraId = UriBuilder.fromPath(response.getHeaderString(LRA_HTTP_CONTEXT_HEADER)).build();
+        assertThat(getCompletable("recovery-compensated-first").get(2, TimeUnit.SECONDS), is(lraId));
+        LocalDateTime first = LocalDateTime.now();
+        System.out.println("First compensate attempt after " + Duration.between(start, first));
+        waitForRecovery(lraId);
+        assertThat(getCompletable("recovery-compensated-second").get(8, TimeUnit.SECONDS), is(lraId));
+        LocalDateTime second = LocalDateTime.now();
+        System.out.println("Second compensate attempt after " + Duration.between(first, second));
+    }
+
     private void assertClosedOrNotFound(URI lraId) {
         try {
             assertThat(coordinatorClient.status(lraId), is(LRAStatus.Closed));
         } catch (NotFoundException e) {
-            
+            // in case coordinator don't retain closed lra long enough
+        }
+    }
+
+    private void sleep() {
+        try {
+            Thread.sleep(5000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void waitForRecovery(URI lraId) {
+        for (int i = 0; i < 10; i++) {
+            try {
+                Response response = ClientBuilder.newClient()
+                        .target("http://localhost:8070/lra-coordinator")
+                        .path("recovery")
+                        .request()
+                        .async()
+                        .get()
+                        .get(2, TimeUnit.SECONDS);
+
+                String recoveringLras = response.readEntity(String.class);
+                // response.close();
+                if (!recoveringLras.contains(lraId.toASCIIString())) {
+                    // intended LRA is not longer among those recovering
+                    break;
+                }
+                System.out.println("Waiting for recovery attempt #" + i + " LRA is still waiting: " + recoveringLras);
+            } catch (TimeoutException | InterruptedException | ExecutionException e) {
+                // timeout can be expected, lets try again
+            }
         }
     }
 }

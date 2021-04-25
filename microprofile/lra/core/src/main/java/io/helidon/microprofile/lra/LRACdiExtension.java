@@ -17,7 +17,9 @@ package io.helidon.microprofile.lra;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Modifier;
+import java.net.URI;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Enumeration;
@@ -34,6 +36,8 @@ import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.context.Initialized;
 import javax.enterprise.context.spi.CreationalContext;
 import javax.enterprise.event.Observes;
+import javax.enterprise.inject.spi.AnnotatedParameter;
+import javax.enterprise.inject.spi.AnnotatedType;
 import javax.enterprise.inject.spi.Bean;
 import javax.enterprise.inject.spi.BeanManager;
 import javax.enterprise.inject.spi.DeploymentException;
@@ -53,6 +57,7 @@ import org.eclipse.microprofile.lra.annotation.AfterLRA;
 import org.eclipse.microprofile.lra.annotation.Compensate;
 import org.eclipse.microprofile.lra.annotation.Complete;
 import org.eclipse.microprofile.lra.annotation.Forget;
+import org.eclipse.microprofile.lra.annotation.LRAStatus;
 import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
 import org.eclipse.microprofile.lra.annotation.Status;
 import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
@@ -99,7 +104,7 @@ public class LRACdiExtension implements Extension {
         }
     }
 
-    private void registerChannelMethods(
+    private void index(
             @Observes
             @WithAnnotations({
                     Path.class,
@@ -113,6 +118,40 @@ public class LRACdiExtension implements Extension {
         runtimeIndex(DotName.createSimple(pat.getAnnotatedType().getJavaClass().getName()));
     }
 
+    private void validate(@Observes
+                          @WithAnnotations(
+                                  {
+                                          Complete.class,
+                                          Compensate.class,
+                                          Forget.class,
+                                          AfterLRA.class
+                                  })
+                                  ProcessAnnotatedType<?> pat) {
+        Set<Class<? extends Annotation>> expected = Set.of(AfterLRA.class, Complete.class, Compensate.class, Forget.class);
+        Set<Class<? extends Annotation>> excluded = Set.of(PUT.class, Path.class);
+        AnnotatedType<?> annotatedType = pat.getAnnotatedType();
+        annotatedType.getMethods().stream()
+                .filter(m -> m.getAnnotations().stream().map(Annotation::annotationType).anyMatch(expected::contains))
+                .filter(m -> m.getAnnotations().stream().map(Annotation::annotationType).noneMatch(excluded::contains))
+                .forEach(m -> {
+                    List<? extends AnnotatedParameter<?>> parameters = m.getParameters();
+                    if (parameters.size() > 2) {
+                        throw new DeploymentException("Too many arguments on compensate method " + m.getJavaMember());
+                    }
+                    if (parameters.size() == 1 && !parameters.get(0).getBaseType().equals(URI.class)){
+                        throw new DeploymentException("First argument of LRA method " + m.getJavaMember() + " must be of type URI");
+                    }
+                    if (parameters.size() == 2){
+                        if(!parameters.get(0).getBaseType().equals(URI.class)){
+                            throw new DeploymentException("First argument of LRA method " + m.getJavaMember() + " must be of type URI");
+                        }
+                        if(!Set.of(URI.class, LRAStatus.class).contains(parameters.get(1).getBaseType())){
+                            throw new DeploymentException("Second argument of LRA method " + m.getJavaMember() + " must be of type URI");
+                        }
+                    }
+                });
+    }
+
     private void ready(
             @Observes
             @Priority(PLATFORM_AFTER + 101)
@@ -124,12 +163,18 @@ public class LRACdiExtension implements Extension {
             index = indexer.complete();
         }
 
-        // Validate LRA methods
+        // ------------- Validate LRA methods ------------- 
         // TODO: Clean up and externalize
         InspectionService inspectionService =
                 lookup(beanManager.resolve(beanManager.getBeans(InspectionService.class)), beanManager);
 
         for (ClassInfo classInfo : index.getKnownClasses()) {
+
+            if (Modifier.isInterface(classInfo.flags()) || Modifier.isAbstract(classInfo.flags())) {
+                // skip
+                continue;
+            }
+
             Map<MethodInfo, Set<AnnotationInstance>> lraMethods = inspectionService.lookUpLraMethods(classInfo);
 
             if (lraMethods.isEmpty()) {
@@ -137,11 +182,8 @@ public class LRACdiExtension implements Extension {
                 continue;
             }
 
-            if (Modifier.isInterface(classInfo.flags()) || Modifier.isAbstract(classInfo.flags())) {
-                // skip
-                continue;
-            }
 
+            // one of compensate or afterLra is mandatory
             Set<DotName> mandatoryAnnotations = Set.of(InspectionService.COMPENSATE, InspectionService.AFTER_LRA);
             if (lraMethods.values().stream()
                     .flatMap(Set::stream)
@@ -150,6 +192,8 @@ public class LRACdiExtension implements Extension {
                 throw new DeploymentException("Missing  @Compensate or @AfterLRA on class " + classInfo);
             }
 
+
+            //allowed return types for compensate and afterLra
             Set<DotName> returnTypes = Set.of(
                     Response.class,
                     ParticipantStatus.class,

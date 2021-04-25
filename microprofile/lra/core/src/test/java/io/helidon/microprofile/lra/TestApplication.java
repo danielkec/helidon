@@ -20,6 +20,7 @@ package io.helidon.microprofile.lra;
 import java.net.URI;
 import java.time.temporal.ChronoUnit;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.inject.Inject;
@@ -43,14 +44,14 @@ import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
 
 @ApplicationScoped
 public class TestApplication extends Application {
-    
+
     @Override
     public Set<Class<?>> getClasses() {
-        return Set.of(StartAndAfter.class, StartAndClose.class, DontEnd.class, Timeout.class);
+        return Set.of(StartAndAfter.class, StartAndClose.class, DontEnd.class, Timeout.class, Recovery.class);
     }
 
     @Path("/start-and-close")
-    public static class StartAndClose extends CommonAfter{
+    public static class StartAndClose extends CommonAfter {
 
         @Inject
         BasicTest basicTest;
@@ -86,11 +87,11 @@ public class TestApplication extends Application {
 
     @ApplicationScoped
     @Path("/dont-end")
-    public static class DontEnd extends CommonAfter{
+    public static class DontEnd extends CommonAfter {
 
         @Inject
         BasicTest basicTest;
-        
+
         @PUT
         @Path("first-not-ending")
         @LRA(value = LRA.Type.REQUIRES_NEW, end = false)
@@ -139,7 +140,45 @@ public class TestApplication extends Application {
             return LRAResponse.compensated();
         }
     }
-    
+
+    @ApplicationScoped
+    @Path("/recovery")
+    public static class Recovery {
+
+        @Inject
+        BasicTest basicTest;
+
+        @PUT
+        @Path("start")
+        @LRA(value = LRA.Type.REQUIRES_NEW, timeLimit = 500, timeUnit = ChronoUnit.MILLIS)
+        public Response startLRA(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
+                                 @HeaderParam(LRA_HTTP_RECOVERY_HEADER) URI recoveryId) {
+            // Force to compensate
+            return Response.serverError()
+                    .header(LRA_HTTP_CONTEXT_HEADER, lraId.toASCIIString())
+                    .header(LRA_HTTP_RECOVERY_HEADER, recoveryId.toASCIIString())
+                    .build();
+        }
+
+        @PUT
+        @Path("/compensate")
+        @Produces(MediaType.APPLICATION_JSON)
+        @Compensate
+        public Response compensateWork(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
+                                       @HeaderParam(LRA_HTTP_RECOVERY_HEADER) URI recoveryId) {
+
+            CompletableFuture<URI> completable = basicTest.getCompletable("recovery-compensated-first");
+            boolean secondCall = completable.isDone();
+            completable.complete(lraId);
+            if (secondCall) {
+                basicTest.getCompletable("recovery-compensated-second").complete(lraId);
+            } else {
+                return LRAResponse.failedToCompensate();
+            }
+            return LRAResponse.compensated();
+        }
+    }
+
     @ApplicationScoped
     public static class CommonAfter {
 

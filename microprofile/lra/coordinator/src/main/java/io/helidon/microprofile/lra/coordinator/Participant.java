@@ -23,6 +23,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -52,7 +54,9 @@ public class Participant {
     private boolean isAfterLRASuccessfullyCalledIfEnlisted;
     private boolean isForgotten;
     private AtomicReference<AfterLraStatus> afterLRACalled = new AtomicReference<>(AfterLraStatus.NOT_SENT);
-    private ParticipantStatus participantStatus;
+    private AtomicReference<ParticipantStatus> participantStatus = new AtomicReference<>(ParticipantStatus.Active);
+    AtomicInteger remainigCloseAttempts = new AtomicInteger(5);
+    AtomicInteger remainigAfterLraAttempts = new AtomicInteger(5);
 
     enum AfterLraStatus {
         NOT_SENT, SENDING, SENT;
@@ -73,14 +77,8 @@ public class Participant {
     }
 
     ParticipantStatus getParticipantStatus() {
-        return participantStatus;
+        return participantStatus.get();
     }
-
-    //todo handle out of order messages, ie validate against state machine
-    public void setParticipantStatus(ParticipantStatus participantStatus) {
-        this.participantStatus = participantStatus;
-    }
-
 
     public Optional<Link> getCompensatorLink(String rel) {
         return compensatorLinks.stream().filter(l -> rel.equals(l.getRel())).findFirst();
@@ -143,21 +141,23 @@ public class Participant {
     }
 
     public boolean isInEndStateOrListenerOnly() {
-        return participantStatus == ParticipantStatus.FailedToComplete ||
-                participantStatus == ParticipantStatus.FailedToCompensate ||
-                participantStatus == ParticipantStatus.Completed ||
-                participantStatus == ParticipantStatus.Compensated ||
-                isListenerOnly();
+        return isListenerOnly()
+                || Set.of(ParticipantStatus.FailedToComplete,
+                ParticipantStatus.FailedToCompensate,
+                ParticipantStatus.Completed,
+                ParticipantStatus.Compensated)
+                .contains(this.participantStatus.get());
     }
 
     public boolean isInEndStateOrListenerOnlyForTerminationType(boolean isCompensate) {
+        ParticipantStatus status = this.participantStatus.get();
         if (isCompensate) {
-            return participantStatus == ParticipantStatus.FailedToCompensate ||
-                    participantStatus == ParticipantStatus.Compensated ||
+            return status == ParticipantStatus.FailedToCompensate ||
+                    status == ParticipantStatus.Compensated ||
                     isListenerOnly();
         } else {
-            return participantStatus == ParticipantStatus.FailedToComplete ||
-                    participantStatus == ParticipantStatus.Completed ||
+            return status == ParticipantStatus.FailedToComplete ||
+                    status == ParticipantStatus.Completed ||
                     isListenerOnly();
         }
     }
@@ -168,15 +168,17 @@ public class Participant {
             Response response = client.target(endpointURI.get())
                     .request()
                     .headers(lra.headers())
-                    .buildPut(Entity.text(LRAStatus.Cancelled.name()))
-                    .invoke();
+                    .async()
+                    .put(Entity.text(LRAStatus.Cancelled.name()))
+                    .get(500, TimeUnit.MILLISECONDS);
 
             switch (response.getStatus()) {
                 // complete or compensated
-                case 200:                
+                case 200:
                 case 202:
                 case 410:
-                    setParticipantStatus(ParticipantStatus.Compensated);
+                    LOGGER.log(Level.INFO, "Compensated participant of LRA {0} {1}", new Object[] {lra.lraId, this.getCompensateURI()});
+                    participantStatus.set(ParticipantStatus.Compensated);
                     return true;
 
                 // retryable
@@ -184,12 +186,15 @@ public class Participant {
                 case 404:
                 case 503:
                 default:
-                    setParticipantStatus(ParticipantStatus.FailedToCompensate);
+                    throw new Exception(response.getStatusInfo() + " " + response.getStatusInfo().getReasonPhrase());
             }
 
         } catch (Exception e) {
-            setParticipantStatus(ParticipantStatus.FailedToCompensate);
-            LOGGER.log(Level.SEVERE, "Error when completing/canceling", e);
+            if (remainigCloseAttempts.decrementAndGet() <= 0) {
+                LOGGER.log(Level.WARNING, "Failed to compensate participant of LRA {0} {1} {2}",
+                        new Object[] {lra.lraId, this.getCompensateURI(), e.getMessage()});
+                participantStatus.set(ParticipantStatus.FailedToCompensate);
+            }
         }
         return false;
     }
@@ -208,7 +213,7 @@ public class Participant {
                 case 200:
                 case 202:
                 case 410:
-                    setParticipantStatus(ParticipantStatus.Completed);
+                    participantStatus.set(ParticipantStatus.Completed);
                     return true;
 
                 // retryable
@@ -216,12 +221,15 @@ public class Participant {
                 case 404:
                 case 503:
                 default:
-                    setParticipantStatus(ParticipantStatus.FailedToComplete);
+                    throw new Exception(response.getStatusInfo() + " " + response.getStatusInfo().getReasonPhrase());
             }
 
         } catch (Exception e) {
-            setParticipantStatus(ParticipantStatus.FailedToComplete);
-            LOGGER.log(Level.SEVERE, "Error when completing/canceling", e);
+            if (remainigCloseAttempts.decrementAndGet() <= 0) {
+                LOGGER.log(Level.WARNING, "Failed to complete participant of LRA {0} {1} {2}",
+                        new Object[] {lra.lraId, this.getCompleteURI(), e.getMessage()});
+                participantStatus.set(ParticipantStatus.FailedToComplete);
+            }
         }
         return false;
     }
@@ -236,7 +244,11 @@ public class Participant {
                         .buildPut(Entity.text(lra.status().get().name()))
                         .invoke();
                 int status = response.getStatus();
-                afterLRACalled.updateAndGet(old -> status == 200 ? AfterLraStatus.SENT : AfterLraStatus.NOT_SENT);
+                if (status == 200) {
+                    afterLRACalled.set(AfterLraStatus.SENT);
+                } else if (remainigAfterLraAttempts.decrementAndGet() <= 0) {
+                    afterLRACalled.set(AfterLraStatus.SENT);
+                }
             }
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Error when sending after lra", e);
@@ -249,7 +261,7 @@ public class Participant {
         Response response;
         int responseStatus;
         String readEntity;
-        ParticipantStatus participantStatus;
+        ParticipantStatus status;
         try {
             response = client.target(statusURI)
                     .request()
@@ -259,10 +271,10 @@ public class Participant {
             if (responseStatus == 503 || responseStatus == 202) { //todo include other retriables
             } else if (responseStatus != 410) {
                 readEntity = response.readEntity(String.class);
-                participantStatus = ParticipantStatus.valueOf(readEntity);
-                setParticipantStatus(participantStatus);
+                status = ParticipantStatus.valueOf(readEntity);
+                participantStatus.set(status);
             } else {
-                setParticipantStatus(lra.isCancel ? ParticipantStatus.Compensated : ParticipantStatus.Completed); // not exactly accurate as it's GONE not explicitly completed or compensated
+                participantStatus.set(lra.isCancel ? ParticipantStatus.Compensated : ParticipantStatus.Completed); // not exactly accurate as it's GONE not explicitly completed or compensated
             }
         } catch (Exception e) { // IllegalArgumentException: No enum constant org.eclipse.microprofile.lra.annotation.ParticipantStatus.
             LOGGER.log(Level.SEVERE, "Error when sending status.", e);

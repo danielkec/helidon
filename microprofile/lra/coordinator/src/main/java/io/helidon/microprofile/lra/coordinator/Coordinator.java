@@ -18,12 +18,15 @@ package io.helidon.microprofile.lra.coordinator;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.context.BeforeDestroyed;
@@ -194,6 +197,23 @@ public class Coordinator {
                 .build();
     }
 
+    @GET
+    @Path("recovery")
+    @Produces(MediaType.TEXT_PLAIN)
+    public Response recovery(@PathParam("LraId") String lraId) {
+        var recoverables = Set.of(LRAStatus.Cancelling, LRAStatus.Closing, LRAStatus.Active);
+        return Coordinator.nextRecoveryCycle()
+                .map(String::valueOf)
+                .onCompleteResume(lraPersistentRegistry
+                        .stream()
+                        .filter(lra -> recoverables.contains(lra.status().get()))
+                        .map(lra -> lra.status().get().name()+"-"+lra.lraId)
+                        .collect(Collectors.joining(","))
+                ).map(s -> Response.ok(s).build())
+                .first()
+                .await();
+    }
+
     @FixedRate(value = 200, timeUnit = TimeUnit.MILLISECONDS)
     public void tick() {
         lraPersistentRegistry.stream().forEach(lra -> {
@@ -201,7 +221,12 @@ public class Coordinator {
                 lraPersistentRegistry.remove(lra.lraId);
             } else {
                 synchronized (this) {
+                    if (Set.of(LRAStatus.Cancelling, LRAStatus.Closing).contains(lra.status().get())) {
+                        LOGGER.log(Level.INFO, "Recovering {0}", lra.lraId);
+                        lra.terminate();
+                    }
                     if (lra.checkTimeout() && lra.status().get().equals(LRAStatus.Active)) {
+                        LOGGER.log(Level.INFO, "Timeouting {0} ", lra.lraId);
                         lra.terminate();
                     }
                 }

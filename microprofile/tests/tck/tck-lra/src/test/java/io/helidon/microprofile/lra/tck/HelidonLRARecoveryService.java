@@ -17,21 +17,56 @@
 package io.helidon.microprofile.lra.tck;
 
 import java.net.URI;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.logging.Logger;
 
-import io.helidon.microprofile.lra.coordinator.Coordinator;
+import javax.ws.rs.client.ClientBuilder;
+import javax.ws.rs.core.Response;
 
+import org.eclipse.microprofile.lra.tck.service.spi.LRACallbackException;
 import org.eclipse.microprofile.lra.tck.service.spi.LRARecoveryService;
 
 public class HelidonLRARecoveryService implements LRARecoveryService {
+
+    private static final Logger LOGGER = Logger.getLogger(HelidonLRARecoveryService.class.getName());
 
     @Override
     public void waitForCallbacks(URI lraId) {
     }
 
     @Override
+    public void waitForRecovery(URI lraId) throws LRACallbackException {
+        int counter = 0;
+
+        do {
+            if (counter > 1) return;
+            LOGGER.info("Recovery attempt #" + ++counter);
+        } while (!waitForEndPhaseReplay(lraId));
+        LOGGER.info("LRA " + lraId + "has finished the recovery");
+    }
+
+    @Override
     public boolean waitForEndPhaseReplay(URI lraId) {
-        Coordinator.nextRecoveryCycle().await(10, TimeUnit.SECONDS);
+        try {
+            Response response = ClientBuilder.newClient()
+                    .target("http://localhost:8070/lra-coordinator")
+                    .path("recovery")
+                    .request()
+                    .async()
+                    .get()
+                    .get(2, TimeUnit.SECONDS);
+
+            String recoveringLras = response.readEntity(String.class);
+            if (recoveringLras.contains(lraId.toASCIIString())) {
+                // intended LRA is among those still waiting for recovering
+                return false;
+            }
+        } catch (TimeoutException | InterruptedException | ExecutionException e) {
+            // timeout can be expected, lets try again
+            return false;
+        }
         return true;
     }
 }

@@ -17,12 +17,10 @@ package io.helidon.microprofile.lra;
 
 import java.io.IOException;
 import java.lang.reflect.Method;
-import java.net.URI;
 import java.util.Optional;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import javax.enterprise.inject.Any;
 import javax.inject.Inject;
 import javax.ws.rs.ConstrainedTo;
 import javax.ws.rs.RuntimeType;
@@ -42,14 +40,12 @@ public class JaxrsServerFilter implements ContainerRequestFilter, ContainerRespo
 
     private static final Logger LOGGER = Logger.getLogger(JaxrsServerFilter.class.getName());
 
-    private static final ThreadLocal<URI> threadLocal = new ThreadLocal<>();
-
     @Context
     protected ResourceInfo resourceInfo;
 
     @Inject
     CoordinatorClient coordinatorClient;
-    
+
     @Inject
     CoordinatorFilteringAdapter coordinatorFilteringAdapter;
 
@@ -68,7 +64,7 @@ public class JaxrsServerFilter implements ContainerRequestFilter, ContainerRespo
 
             // Adapt JaxRs calls to specific coordinator
             coordinatorFilteringAdapter.handleJaxrsBefore(requestContext, resourceInfo);
-            
+
             // select current lra annotation handler and process
             for (AnnotationHandler handler : AnnotationHandler.create(method, inspectionService, coordinatorClient)) {
                 handler.handleJaxrsBefore(requestContext, resourceInfo);

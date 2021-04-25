@@ -29,6 +29,8 @@ import javax.ws.rs.container.ContainerRequestContext;
 import javax.ws.rs.container.ContainerResponseContext;
 import javax.ws.rs.container.ResourceInfo;
 
+import org.eclipse.microprofile.lra.annotation.Complete;
+import org.eclipse.microprofile.lra.annotation.Status;
 import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
 import org.eclipse.microprofile.lra.annotation.ws.rs.Leave;
 import org.jboss.jandex.AnnotationInstance;
@@ -40,13 +42,23 @@ interface AnnotationHandler {
     Map<String, HandlerMaker> HANDLER_SUPPLIERS =
             Map.of(
                     LRA.class.getName(), LRAAnnotationHandler::new,
-                    Leave.class.getName(), (a, client, i) -> new LeaveAnnotationHandler(client)
+                    Leave.class.getName(), (a, client, i) -> new LeaveAnnotationHandler(client), 
+                    Status.class.getName(), (a, client, i) -> new NoopAnnotationHandler()
             );
+    
+    Set<String> STAND_ALONE_ANNOTATIONS = Set.of(Status.class.getName(), Complete.class.getName());
 
     static List<AnnotationHandler> create(Method m, InspectionService inspectionService, CoordinatorClient coordinatorClient) {
         Set<AnnotationInstance> lraAnnotations = inspectionService.lookUpLraAnnotations(m);
         if (lraAnnotations.isEmpty()) {
             return List.of(new NoAnnotationHandler());
+        }
+        //TODO: Rework to prioritize annotations
+        if(lraAnnotations.stream()
+                .map(a -> a.name().toString())
+                .anyMatch(STAND_ALONE_ANNOTATIONS::contains)){
+            // Status beats all others
+            return List.of(new NoopAnnotationHandler());
         }
 
         return lraAnnotations.stream().map(lraAnnotation -> {

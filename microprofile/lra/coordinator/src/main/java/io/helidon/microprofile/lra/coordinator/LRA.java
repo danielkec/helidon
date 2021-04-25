@@ -156,7 +156,8 @@ public class LRA {
     }
 
     void cancel() {
-        if (!status.compareAndSet(LRAStatus.Active, LRAStatus.Cancelling)){
+        Set<LRAStatus> allowedStatuses = Set.of(LRAStatus.Active, LRAStatus.Cancelling);
+        if (LRAStatus.Cancelling != status.updateAndGet(old -> allowedStatuses.contains(old) ? LRAStatus.Cancelling : old)) {
             LOGGER.warning("Can't cancel LRA, it's already " + status.get().name() + " " + this.lraId);
             return;
         }

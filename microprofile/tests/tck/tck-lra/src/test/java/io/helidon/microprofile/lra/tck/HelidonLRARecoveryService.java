@@ -41,7 +41,7 @@ public class HelidonLRARecoveryService implements LRARecoveryService {
         int counter = 0;
 
         do {
-            if (counter > 1) return;
+            if (counter > 7) return;
             LOGGER.info("Recovery attempt #" + ++counter);
         } while (!waitForEndPhaseReplay(lraId));
         LOGGER.info("LRA " + lraId + "has finished the recovery");

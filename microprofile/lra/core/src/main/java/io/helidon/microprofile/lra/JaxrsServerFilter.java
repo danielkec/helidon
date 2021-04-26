@@ -51,6 +51,9 @@ public class JaxrsServerFilter implements ContainerRequestFilter, ContainerRespo
 
     @Inject
     InspectionService inspectionService;
+    
+    @Inject
+    ParticipantService participantService;
 
     @Override
     public void filter(ContainerRequestContext requestContext) throws IOException {
@@ -66,7 +69,7 @@ public class JaxrsServerFilter implements ContainerRequestFilter, ContainerRespo
             coordinatorFilteringAdapter.handleJaxrsBefore(requestContext, resourceInfo);
 
             // select current lra annotation handler and process
-            for (AnnotationHandler handler : AnnotationHandler.create(method, inspectionService, coordinatorClient)) {
+            for (AnnotationHandler handler : AnnotationHandler.create(method, inspectionService, coordinatorClient, participantService)) {
                 handler.handleJaxrsBefore(requestContext, resourceInfo);
             }
         } catch (WebApplicationException e) {
@@ -90,7 +93,7 @@ public class JaxrsServerFilter implements ContainerRequestFilter, ContainerRespo
             coordinatorFilteringAdapter.handleJaxrsAfter(requestContext, responseContext, resourceInfo);
             
             // select current lra annotation handler and process
-            for (AnnotationHandler handler : AnnotationHandler.create(method, inspectionService, coordinatorClient)) {
+            for (AnnotationHandler handler : AnnotationHandler.create(method, inspectionService, coordinatorClient, participantService)) {
                 handler.handleJaxrsAfter(requestContext, responseContext, resourceInfo);
             }
 

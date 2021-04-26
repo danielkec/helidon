@@ -42,21 +42,24 @@ interface AnnotationHandler {
     Map<String, HandlerMaker> HANDLER_SUPPLIERS =
             Map.of(
                     LRA.class.getName(), LRAAnnotationHandler::new,
-                    Leave.class.getName(), (a, client, i) -> new LeaveAnnotationHandler(client), 
-                    Status.class.getName(), (a, client, i) -> new NoopAnnotationHandler()
+                    Leave.class.getName(), (a, client, i, p) -> new LeaveAnnotationHandler(client, p),
+                    Status.class.getName(), (a, client, i, p) -> new NoopAnnotationHandler()
             );
-    
+
     Set<String> STAND_ALONE_ANNOTATIONS = Set.of(Status.class.getName(), Complete.class.getName());
 
-    static List<AnnotationHandler> create(Method m, InspectionService inspectionService, CoordinatorClient coordinatorClient) {
+    static List<AnnotationHandler> create(Method m,
+                                          InspectionService inspectionService,
+                                          CoordinatorClient coordinatorClient,
+                                          ParticipantService participantService) {
         Set<AnnotationInstance> lraAnnotations = inspectionService.lookUpLraAnnotations(m);
         if (lraAnnotations.isEmpty()) {
             return List.of(new NoAnnotationHandler());
         }
         //TODO: Rework to prioritize annotations
-        if(lraAnnotations.stream()
+        if (lraAnnotations.stream()
                 .map(a -> a.name().toString())
-                .anyMatch(STAND_ALONE_ANNOTATIONS::contains)){
+                .anyMatch(STAND_ALONE_ANNOTATIONS::contains)) {
             // Status beats all others
             return List.of(new NoopAnnotationHandler());
         }
@@ -69,7 +72,7 @@ interface AnnotationHandler {
                 // Non LRA annotation on LRA method, skipping
                 return null;
             }
-            return handlerMaker.make(lraAnnotation, coordinatorClient, inspectionService);
+            return handlerMaker.make(lraAnnotation, coordinatorClient, inspectionService, participantService);
         }).filter(Objects::nonNull)
                 .collect(Collectors.toList());
     }
@@ -85,6 +88,7 @@ interface AnnotationHandler {
     interface HandlerMaker {
         AnnotationHandler make(AnnotationInstance annotationInstance,
                                CoordinatorClient coordinatorClient,
-                               InspectionService inspectionService);
+                               InspectionService inspectionService,
+                               ParticipantService participantService);
     }
 }

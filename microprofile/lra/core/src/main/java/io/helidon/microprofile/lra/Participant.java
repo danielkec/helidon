@@ -29,7 +29,13 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import javax.enterprise.context.ApplicationScoped;
+import javax.ws.rs.DELETE;
+import javax.ws.rs.GET;
+import javax.ws.rs.POST;
+import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
+import javax.ws.rs.Produces;
 import javax.ws.rs.core.Link;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.UriBuilder;
@@ -42,22 +48,60 @@ import org.eclipse.microprofile.lra.annotation.Status;
 import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
 import org.eclipse.microprofile.lra.annotation.ws.rs.Leave;
 
+@ApplicationScoped
 public class Participant {
 
     static final Set<Class<? extends Annotation>> LRA_ANNOTATIONS =
-            Set.of(LRA.class, Compensate.class, Complete.class, Forget.class, Status.class, AfterLRA.class, Leave.class);
+            Set.of(
+                    LRA.class,
+                    Compensate.class,
+                    Complete.class,
+                    Forget.class,
+                    Status.class,
+                    AfterLRA.class,
+                    Leave.class
+            );
 
-    static final Map<Class<?>, Participant> participants = new HashMap<>();
+    static final Set<Class<? extends Annotation>> JAX_RS_ANNOTATIONS =
+            Set.of(
+                    Path.class,
+                    GET.class,
+                    PUT.class,
+                    POST.class,
+                    DELETE.class,
+                    Produces.class
+            );
+
 
     private final Map<Class<? extends Annotation>, URI> compensatorLinks = new HashMap<>();
     private final Map<Class<? extends Annotation>, Set<Method>> methodMap;
 
-    private Participant(URI baseUri, Class<?> resourceClazz) {
+    Participant(URI baseUri, Class<?> resourceClazz) {
         methodMap = scanForLRAMethods(resourceClazz);
         methodMap.entrySet().stream()
                 .filter(e -> e.getKey() != LRA.class)
                 .forEach(e -> {
                     Method method = e.getValue().stream().findFirst().get();
+
+                    System.out.println(method.getName());
+                    System.out.println(method.getDeclaredAnnotations());
+                    System.out.println(Arrays.stream(method
+                            .getDeclaredAnnotations())
+                            .noneMatch(JAX_RS_ANNOTATIONS::contains));
+                    if (Arrays.stream(method
+                            .getDeclaredAnnotations())
+                            .noneMatch(JAX_RS_ANNOTATIONS::contains)) {
+                        //no jar-rs annotation means LRA cdi method
+                        URI uri = UriBuilder.fromUri(baseUri)
+                                .path("lra-client-cdi-methods") //Auxiliary Jax-Rs resource for cdi methods 
+                                .path(e.getKey().getSimpleName().toLowerCase())//@Complete -> /complete
+                                .path(resourceClazz.getName())
+                                .path(method.getName())
+                                .build();
+                        compensatorLinks.put(e.getKey(), uri);
+                        return;
+                    }
+
                     UriBuilder builder = UriBuilder.fromUri(baseUri)
                             .path(resourceClazz);
 
@@ -98,22 +142,13 @@ public class Participant {
         return Optional.ofNullable(compensatorLinks.get(Status.class));
     }
 
-    public static Participant get(URI baseUri, Class<?> clazz) {
-        return participants.computeIfAbsent(clazz, c -> new Participant(baseUri, c));
-    }
-
     public static Optional<Annotation> getLRAAnnotation(Method m) {
         List<Annotation> found = Arrays.stream(m.getDeclaredAnnotations())
                 .filter(a -> LRA_ANNOTATIONS.contains(a.annotationType()))
                 .collect(Collectors.toList());
 
-        if (found.size() > 1) {
-            // TODO: LRA + Leave is OK
-            //throw new IllegalStateException("Only one LRA annotation on the method is allowed " + m.getDeclaringClass() + "#" + m.getName());
-        }
-
         if (found.size() == 0) {
-            // LRA can be inherited from class or its predecesors
+            // LRA can be inherited from class or its predecessors
             var clazz = m.getDeclaringClass();
             do {
                 LRA clazzLraAnnotation = clazz.getAnnotation(LRA.class);
@@ -127,7 +162,7 @@ public class Participant {
         return found.stream().findFirst();
     }
 
-    public String compenstorLinks() {
+    public String compensatorLinks() {
         return Map.of(
                 "compensate", compensate(),
                 "complete", complete(),
@@ -149,6 +184,7 @@ public class Participant {
     }
 
     public static Map<Class<? extends Annotation>, Set<Method>> scanForLRAMethods(Class<?> clazz) {
+        //TODO: use jandex
         Map<Class<? extends Annotation>, Set<Method>> methods = new HashMap<>();
         do {
             for (Method m : clazz.getDeclaredMethods()) {

@@ -20,12 +20,22 @@ import org.jboss.shrinkwrap.api.spec.JavaArchive;
 
 public class CoordinatorDeployer {
 
+    static final boolean USE_MOCK_COODINATOR;
+    
+    static {
+        boolean mockAvailable = false;
+        try{
+            Class.forName("io.helidon.microprofile.lra.coordinator.Coordinator");
+            mockAvailable = true;
+        }catch (ClassNotFoundException e){
+            // Mock coordinator not on the classpath
+        }
+        USE_MOCK_COODINATOR = mockAvailable;
+    }
 
     public void beforeStart(@Observes BeforeStart event, Container container) throws Exception {
-//        if(true){
-//            return;
-//        }
-
+        if(!USE_MOCK_COODINATOR)return;
+        
         Files.deleteIfExists(Paths.get("target/mock-coordinator/lra-registry"));
         HelidonDeployableContainer helidonContainer = (HelidonDeployableContainer) container.getDeployableContainer();
         HelidonContainerConfiguration containerConfig = helidonContainer.getContainerConfig();
@@ -51,6 +61,7 @@ public class CoordinatorDeployer {
     }
 
     public void beforeUndeploy(@Observes BeforeUnDeploy event, Container container) throws DeploymentException {
+        if(!USE_MOCK_COODINATOR)return;
         // Gracefully stop the container so mock coordinator gets the chance to persist lra registry
         try {
             CDI<Object> current = CDI.current();

@@ -57,7 +57,6 @@ import org.glassfish.jersey.ext.cdi1x.internal.CdiComponentProvider;
 import org.hamcrest.core.AnyOf;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 @HelidonTest
@@ -65,18 +64,23 @@ import org.junit.jupiter.api.Test;
 @AddExtension(ConfigCdiExtension.class)
 @AddExtension(ServerCdiExtension.class)
 @AddExtension(JaxRsCdiExtension.class)
-@AddExtension(LRACdiExtension.class)
 @AddExtension(CdiComponentProvider.class)
+// LRA client
+@AddExtension(LRACdiExtension.class)
 @AddBean(NarayanaClient.class)
 @AddBean(NarayanaAdapter.class)
 @AddBean(InspectionService.class)
+@AddBean(ParticipantService.class)
+@AddBean(ParticipantResource.class)
+// Test resources
 @AddBean(TestApplication.class)
 @AddBean(TestApplication.StartAndClose.class)
+@AddBean(TestApplication.StartAndCloseCdi.class)
 @AddBean(TestApplication.StartAndAfter.class)
 @AddBean(TestApplication.DontEnd.class)
 @AddBean(TestApplication.Timeout.class)
 @AddBean(TestApplication.Recovery.class)
-
+// Mock coordinator
 @AddBean(Coordinator.class)
 @AddBean(CoordinatorApplication.class)
 @AddExtension(SchedulingCdiExtension.class)
@@ -118,6 +122,18 @@ public class BasicTest {
                 .get(10, TimeUnit.SECONDS);
         assertThat(response.getStatus(), AnyOf.anyOf(is(200), is(204)));
         getCompletable("start-and-close").get(10, TimeUnit.SECONDS);
+    }
+
+    @Test
+    void cdiComplete(WebTarget target) throws Exception {
+        Response response = target.path("start-and-close-cdi")
+                .path("start")
+                .request()
+                .async()
+                .put(Entity.text(""))
+                .get(10, TimeUnit.SECONDS);
+        assertThat(response.getStatus(), AnyOf.anyOf(is(200), is(204)));
+        getCompletable("start-and-close-cdi").get(10, TimeUnit.SECONDS);
     }
 
     @Test

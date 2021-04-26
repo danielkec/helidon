@@ -39,8 +39,13 @@ class LRAAnnotationHandler implements AnnotationHandler {
 
     private final InspectionService.Lra annotation;
     private final CoordinatorClient coordinatorClient;
+    private ParticipantService participantService;
 
-    LRAAnnotationHandler(AnnotationInstance annotation, CoordinatorClient coordinatorClient, InspectionService inspectionService) {
+    LRAAnnotationHandler(AnnotationInstance annotation, 
+                         CoordinatorClient coordinatorClient, 
+                         InspectionService inspectionService,
+                         ParticipantService participantService) {
+        this.participantService = participantService;
         this.annotation = inspectionService.lraAnnotation(annotation);
         this.coordinatorClient = coordinatorClient;
     }
@@ -49,7 +54,7 @@ class LRAAnnotationHandler implements AnnotationHandler {
     public void handleJaxrsBefore(ContainerRequestContext reqCtx, ResourceInfo resourceInfo) {
         var method = resourceInfo.getResourceMethod();
         var baseUri = reqCtx.getUriInfo().getBaseUri();
-        var participant = Participant.get(baseUri, resourceInfo.getResourceClass());
+        var participant = participantService.participant(baseUri, resourceInfo.getResourceClass());
         var existingLraId = LRAThreadContext.get().lra();
         var timeLimit = annotation.timeLimit();
         var end = annotation.end();

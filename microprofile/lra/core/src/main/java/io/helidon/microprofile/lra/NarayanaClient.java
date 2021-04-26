@@ -131,7 +131,7 @@ public class NarayanaClient implements CoordinatorClient {
                     Long timeLimit,
                     Participant participant) throws WebApplicationException {
         try {
-            String links = participant.compenstorLinks();
+            String links = participant.compensatorLinks();
             Response response = ClientBuilder.newClient()
                     .target(coordinatorUrl)
                     .path(lraId.toASCIIString())
@@ -179,7 +179,7 @@ public class NarayanaClient implements CoordinatorClient {
                     .path("remove")
                     .request()
                     .async()
-                    .put(Entity.text(participant.compenstorLinks()))
+                    .put(Entity.text(participant.compensatorLinks()))
                     .get(10, TimeUnit.SECONDS);
 
             switch (response.getStatus()) {

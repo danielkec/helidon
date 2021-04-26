@@ -17,7 +17,6 @@
 
 package io.helidon.microprofile.lra;
 
-import java.lang.reflect.Method;
 import java.net.URI;
 import java.util.Optional;
 
@@ -29,11 +28,12 @@ import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT
 
 class LeaveAnnotationHandler implements AnnotationHandler {
 
-    private CoordinatorClient coordinatorClient;
-    private Method method;
+    private final CoordinatorClient coordinatorClient;
+    private final ParticipantService participantService;
 
-    public LeaveAnnotationHandler(CoordinatorClient coordinatorClient) {
+    public LeaveAnnotationHandler(CoordinatorClient coordinatorClient, final ParticipantService participantService) {
         this.coordinatorClient = coordinatorClient;
+        this.participantService = participantService;
     }
 
     @Override
@@ -43,7 +43,7 @@ class LeaveAnnotationHandler implements AnnotationHandler {
         if (existingLraId.isPresent()) {
             var lraId = existingLraId.get();
             var baseUri = requestContext.getUriInfo().getBaseUri();
-            var participant = Participant.get(baseUri, resourceInfo.getResourceClass());
+            var participant = participantService.participant(baseUri, resourceInfo.getResourceClass());
             coordinatorClient.leave(lraId, participant);
             requestContext.getHeaders().add(LRA_HTTP_CONTEXT_HEADER, lraId.toASCIIString());
             requestContext.setProperty("lra.id", lraId);

@@ -47,7 +47,14 @@ public class TestApplication extends Application {
 
     @Override
     public Set<Class<?>> getClasses() {
-        return Set.of(StartAndAfter.class, StartAndClose.class, DontEnd.class, Timeout.class, Recovery.class);
+        return Set.of(
+                StartAndCloseCdi.class,
+                StartAndAfter.class,
+                StartAndClose.class, 
+                DontEnd.class, 
+                Timeout.class, 
+                Recovery.class
+        );
     }
 
     @Path("/start-and-close")
@@ -69,6 +76,26 @@ public class TestApplication extends Application {
         public Response completeWork(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId, String userData) {
             basicTest.getCompletable("start-and-close").complete(null);
             return Response.ok(ParticipantStatus.Completed.name()).build();
+        }
+    }
+
+    @Path("/start-and-close-cdi")
+    public static class StartAndCloseCdi extends CommonAfter {
+
+        @Inject
+        BasicTest basicTest;
+
+        @PUT
+        @LRA(LRA.Type.REQUIRES_NEW)
+        @Path("/start")
+        public void doInTransaction(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId) {
+
+        }
+
+        @Complete
+        public Response complete(URI lraId) {
+            basicTest.getCompletable("start-and-close-cdi").complete(null);
+            return LRAResponse.completed();
         }
     }
 

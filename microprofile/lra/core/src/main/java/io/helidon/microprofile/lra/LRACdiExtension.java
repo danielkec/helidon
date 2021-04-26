@@ -18,11 +18,13 @@ package io.helidon.microprofile.lra;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.annotation.Annotation;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Modifier;
 import java.net.URI;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -36,22 +38,34 @@ import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.context.Initialized;
 import javax.enterprise.context.spi.CreationalContext;
 import javax.enterprise.event.Observes;
+import javax.enterprise.inject.literal.NamedLiteral;
+import javax.enterprise.inject.spi.AfterBeanDiscovery;
 import javax.enterprise.inject.spi.AnnotatedParameter;
 import javax.enterprise.inject.spi.AnnotatedType;
 import javax.enterprise.inject.spi.Bean;
+import javax.enterprise.inject.spi.BeanAttributes;
 import javax.enterprise.inject.spi.BeanManager;
+import javax.enterprise.inject.spi.CDI;
 import javax.enterprise.inject.spi.DeploymentException;
 import javax.enterprise.inject.spi.Extension;
 import javax.enterprise.inject.spi.ProcessAnnotatedType;
+import javax.enterprise.inject.spi.ProcessManagedBean;
+import javax.enterprise.inject.spi.ProducerFactory;
 import javax.enterprise.inject.spi.WithAnnotations;
 import javax.ws.rs.DELETE;
 import javax.ws.rs.GET;
+import javax.ws.rs.HeaderParam;
 import javax.ws.rs.POST;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
+import javax.ws.rs.core.Application;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.UriBuilder;
 
 import static javax.interceptor.Interceptor.Priority.PLATFORM_AFTER;
+import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
+import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVERY_HEADER;
 
 import org.eclipse.microprofile.lra.annotation.AfterLRA;
 import org.eclipse.microprofile.lra.annotation.Compensate;
@@ -69,6 +83,9 @@ import org.jboss.jandex.IndexReader;
 import org.jboss.jandex.IndexView;
 import org.jboss.jandex.Indexer;
 import org.jboss.jandex.MethodInfo;
+
+import io.helidon.microprofile.server.RoutingBuilders;
+import io.helidon.microprofile.server.ServerCdiExtension;
 
 public class LRACdiExtension implements Extension {
 
@@ -138,20 +155,46 @@ public class LRACdiExtension implements Extension {
                     if (parameters.size() > 2) {
                         throw new DeploymentException("Too many arguments on compensate method " + m.getJavaMember());
                     }
-                    if (parameters.size() == 1 && !parameters.get(0).getBaseType().equals(URI.class)){
+                    if (parameters.size() == 1 && !parameters.get(0).getBaseType().equals(URI.class)) {
                         throw new DeploymentException("First argument of LRA method " + m.getJavaMember() + " must be of type URI");
                     }
-                    if (parameters.size() == 2){
-                        if(!parameters.get(0).getBaseType().equals(URI.class)){
+                    if (parameters.size() == 2) {
+                        if (!parameters.get(0).getBaseType().equals(URI.class)) {
                             throw new DeploymentException("First argument of LRA method " + m.getJavaMember() + " must be of type URI");
                         }
-                        if(!Set.of(URI.class, LRAStatus.class).contains(parameters.get(1).getBaseType())){
+                        if (!Set.of(URI.class, LRAStatus.class).contains(parameters.get(1).getBaseType())) {
                             throw new DeploymentException("Second argument of LRA method " + m.getJavaMember() + " must be of type URI");
                         }
                     }
                 });
     }
 
+    
+    private final Map<Class<?>, Bean<?>> lraCdiBeanReferences = new HashMap<>();
+    
+    private void cdiLRABeanReferences(@Observes ProcessManagedBean<?> event) {
+        //TODO: limit only to beans with Complete/Compensate/Status lra cdi methods
+        lraCdiBeanReferences.put(event.getBean().getBeanClass(), event.getBean());
+    }
+
+    private void addClientApplication(@Observes 
+                             @Priority(PLATFORM_AFTER + 90) 
+                             @Initialized(ApplicationScoped.class) AfterBeanDiscovery event,
+                             BeanManager beanManager) {
+        event.addBean()
+                //.addType(EntityManagerFactory.class)
+                .scope(ApplicationScoped.class)
+                //.addQualifiers(qualifiers)
+                .produceWith(instance -> {
+                    return new Application(){
+                        @Override
+                        public Set<Class<?>> getClasses() {
+                            return Set.of(ParticipantResource.class);
+                        }
+                    };
+                });
+    }
+    
     private void ready(
             @Observes
             @Priority(PLATFORM_AFTER + 101)
@@ -217,6 +260,36 @@ public class LRACdiExtension implements Extension {
             });
 
         }
+
+        ParticipantService participantService = CDI.current().select(ParticipantService.class).get();
+
+        // ------------- Register auxiliary jax-rs resource for cdi LRA methods -------------
+//        ServerCdiExtension server = beanManager.getExtension(ServerCdiExtension.class);
+//        server.serverNamedRoutingBuilder("lra-client-cdi-methods")
+//                .register(rules -> rules.put("/complete/{fqdn}/{methodName}",(req, res) -> {
+//                    URI lraId = req.headers().first(LRA_HTTP_CONTEXT_HEADER)
+//                            .map(UriBuilder::fromPath)
+//                            .map(UriBuilder::build)
+//                            .orElse(null);
+//                    //TODO: parent or recovery?
+//                    URI parentId = req.headers().first(LRA_HTTP_RECOVERY_HEADER)
+//                            .map(UriBuilder::fromPath)
+//                            .map(UriBuilder::build)
+//                            .orElse(null);
+//                    String fqdn = req.queryParams().first("fqdn").get();
+//                    String methodName = req.queryParams().first("methodName").get();
+//                    try {
+//                        Response result = participantService.invoke(fqdn, methodName, lraId, parentId);
+//                        res.status(result.getStatus())
+//                                .send(result.getEntity());
+//                    } catch (InvocationTargetException e) {
+//                        res.status(500).send(e.getCause());
+//                    }
+//                }));
+    }
+
+    public Map<Class<?>, Bean<?>> lraCdiBeanReferences() {
+        return lraCdiBeanReferences;
     }
 
     void runtimeIndex(DotName fqdn) {

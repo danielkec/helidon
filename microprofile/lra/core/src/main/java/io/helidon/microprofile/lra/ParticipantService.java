@@ -15,8 +15,6 @@
  */
 package io.helidon.microprofile.lra;
 
-import org.eclipse.microprofile.lra.LRAResponse;
-
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URI;
@@ -30,7 +28,6 @@ import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.inject.spi.Bean;
 import javax.enterprise.inject.spi.BeanManager;
 import javax.inject.Inject;
-import javax.ws.rs.core.Response;
 
 @ApplicationScoped
 public class ParticipantService {
@@ -50,7 +47,7 @@ public class ParticipantService {
     /**
      * Participant ID is expected to be classFqdn#methodName
      */
-    Response invoke(String classFqdn, String methodName, URI lraId, URI parentId) throws InvocationTargetException {
+    Object invoke(String classFqdn, String methodName, URI lraId, Object secondParam) throws InvocationTargetException {
         Class<?> clazz;
         try {
             clazz = Class.forName(classFqdn);
@@ -66,9 +63,8 @@ public class ParticipantService {
                     .findFirst().orElseThrow(() -> new RuntimeException("Cant find participant method " + methodName
                             + " with participant method: " + classFqdn + "#" + methodName));
             int paramCount = method.getParameters().length;
-            Object result = method.invoke(LRACdiExtension.lookup(bean, beanManager), 
-                    Stream.of(lraId, parentId).limit(paramCount).toArray());
-            return (Response) result;
+            return method.invoke(LRACdiExtension.lookup(bean, beanManager), 
+                    Stream.of(lraId, secondParam).limit(paramCount).toArray());
         } catch (IllegalAccessException e) {
             throw new RuntimeException("Cant invoke participant method " + methodName
                     + " with participant method: " + classFqdn + "#" + methodName, e);

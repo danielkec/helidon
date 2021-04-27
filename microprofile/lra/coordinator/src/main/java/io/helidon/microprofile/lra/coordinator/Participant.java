@@ -53,10 +53,16 @@ public class Participant {
     private static final Logger LOGGER = Logger.getLogger(Participant.class.getName());
     private boolean isAfterLRASuccessfullyCalledIfEnlisted;
     private boolean isForgotten;
-    private AtomicReference<AfterLraStatus> afterLRACalled = new AtomicReference<>(AfterLraStatus.NOT_SENT);
-    private AtomicReference<ParticipantStatus> participantStatus = new AtomicReference<>(ParticipantStatus.Active);
-    AtomicInteger remainigCloseAttempts = new AtomicInteger(5);
-    AtomicInteger remainigAfterLraAttempts = new AtomicInteger(5);
+    private final AtomicReference<AfterLraStatus> afterLRACalled = new AtomicReference<>(AfterLraStatus.NOT_SENT);
+    private final AtomicReference<ParticipantStatus> participantStatus = new AtomicReference<>(ParticipantStatus.Active);
+    private final AtomicReference<SendingStatus> sendingStatus = new AtomicReference<>(SendingStatus.NOT_SENDING);
+    AtomicInteger remainingCloseAttempts = new AtomicInteger(5);
+    AtomicInteger remainingAfterLraAttempts = new AtomicInteger(5);
+
+    //TODO: Participant needs custom states
+    enum SendingStatus {
+        SENDING, NOT_SENDING;
+    }
 
     enum AfterLraStatus {
         NOT_SENT, SENDING, SENT;
@@ -163,6 +169,7 @@ public class Participant {
     }
 
     boolean sendCancel(LRA lra) {
+        if (!sendingStatus.compareAndSet(SendingStatus.NOT_SENDING, SendingStatus.SENDING)) return false;
         Optional<URI> endpointURI = getCompensateURI();
         try {
             Response response = client.target(endpointURI.get())
@@ -190,16 +197,19 @@ public class Participant {
             }
 
         } catch (Exception e) {
-            if (remainigCloseAttempts.decrementAndGet() <= 0) {
+            if (remainingCloseAttempts.decrementAndGet() <= 0) {
                 LOGGER.log(Level.WARNING, "Failed to compensate participant of LRA {0} {1} {2}",
                         new Object[] {lra.lraId, this.getCompensateURI(), e.getMessage()});
                 participantStatus.set(ParticipantStatus.FailedToCompensate);
             }
+        } finally {
+            sendingStatus.set(SendingStatus.NOT_SENDING);
         }
         return false;
     }
 
     boolean sendComplete(LRA lra) {
+        if (!sendingStatus.compareAndSet(SendingStatus.NOT_SENDING, SendingStatus.SENDING)) return false;
         Optional<URI> endpointURI = getCompleteURI();
         try {
             Response response = client.target(endpointURI.get())
@@ -225,11 +235,13 @@ public class Participant {
             }
 
         } catch (Exception e) {
-            if (remainigCloseAttempts.decrementAndGet() <= 0) {
+            if (remainingCloseAttempts.decrementAndGet() <= 0) {
                 LOGGER.log(Level.WARNING, "Failed to complete participant of LRA {0} {1} {2}",
                         new Object[] {lra.lraId, this.getCompleteURI(), e.getMessage()});
                 participantStatus.set(ParticipantStatus.FailedToComplete);
             }
+        } finally {
+            sendingStatus.set(SendingStatus.NOT_SENDING);
         }
         return false;
     }
@@ -246,7 +258,7 @@ public class Participant {
                 int status = response.getStatus();
                 if (status == 200) {
                     afterLRACalled.set(AfterLraStatus.SENT);
-                } else if (remainigAfterLraAttempts.decrementAndGet() <= 0) {
+                } else if (remainingAfterLraAttempts.decrementAndGet() <= 0) {
                     afterLRACalled.set(AfterLraStatus.SENT);
                 }
             }

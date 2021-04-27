@@ -15,14 +15,15 @@
  */
 package io.helidon.microprofile.lra;
 
-import org.glassfish.jersey.internal.spi.AutoDiscoverable;
+import java.util.Set;
 
-public class LRAAutoDiscoverable implements AutoDiscoverable {
+import javax.enterprise.context.ApplicationScoped;
+import javax.ws.rs.core.Application;
 
+@ApplicationScoped
+public class ParticipantApp extends Application {
     @Override
-    public void configure(javax.ws.rs.core.FeatureContext ctx) {
-        ctx.register(JaxrsServerFilter.class)
-                .register(JaxrsClientFilter.class)
-                .register(StatusBodyReader.class);
+    public Set<Class<?>> getClasses() {
+        return Set.of(ParticipantResource.class);
     }
 }

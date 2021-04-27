@@ -71,7 +71,7 @@ import org.junit.jupiter.api.Test;
 @AddBean(NarayanaAdapter.class)
 @AddBean(InspectionService.class)
 @AddBean(ParticipantService.class)
-@AddBean(ParticipantResource.class)
+@AddBean(ParticipantApp.class)
 // Test resources
 @AddBean(TestApplication.class)
 @AddBean(TestApplication.StartAndClose.class)

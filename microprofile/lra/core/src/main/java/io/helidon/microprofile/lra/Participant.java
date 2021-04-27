@@ -82,14 +82,10 @@ public class Participant {
                 .filter(e -> e.getKey() != LRA.class)
                 .forEach(e -> {
                     Method method = e.getValue().stream().findFirst().get();
-
-                    System.out.println(method.getName());
-                    System.out.println(method.getDeclaredAnnotations());
-                    System.out.println(Arrays.stream(method
-                            .getDeclaredAnnotations())
-                            .noneMatch(JAX_RS_ANNOTATIONS::contains));
+                    
                     if (Arrays.stream(method
                             .getDeclaredAnnotations())
+                            .map(Annotation::annotationType)
                             .noneMatch(JAX_RS_ANNOTATIONS::contains)) {
                         //no jar-rs annotation means LRA cdi method
                         URI uri = UriBuilder.fromUri(baseUri)

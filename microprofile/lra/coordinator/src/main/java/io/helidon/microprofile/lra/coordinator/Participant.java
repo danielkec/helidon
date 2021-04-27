@@ -46,18 +46,77 @@ import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 import org.eclipse.microprofile.lra.annotation.LRAStatus;
 import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
 
+import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.*;
+import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.Compensated;
+import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.Completed;
+
 @XmlRootElement
 @XmlAccessorType(XmlAccessType.FIELD)
 public class Participant {
+
+    private static final int RETRY_CNT = 5;
 
     private static final Logger LOGGER = Logger.getLogger(Participant.class.getName());
     private boolean isAfterLRASuccessfullyCalledIfEnlisted;
     private boolean isForgotten;
     private final AtomicReference<AfterLraStatus> afterLRACalled = new AtomicReference<>(AfterLraStatus.NOT_SENT);
-    private final AtomicReference<ParticipantStatus> participantStatus = new AtomicReference<>(ParticipantStatus.Active);
     private final AtomicReference<SendingStatus> sendingStatus = new AtomicReference<>(SendingStatus.NOT_SENDING);
-    AtomicInteger remainingCloseAttempts = new AtomicInteger(5);
-    AtomicInteger remainingAfterLraAttempts = new AtomicInteger(5);
+    AtomicInteger remainingCloseAttempts = new AtomicInteger(RETRY_CNT);
+    AtomicInteger remainingAfterLraAttempts = new AtomicInteger(RETRY_CNT);
+
+    private final AtomicReference<Status> status = new AtomicReference<>(Status.ACTIVE);
+
+    enum Status {
+        ACTIVE(Active, null, null, false, Set.of(Completing, Compensating)),
+
+        COMPENSATED(Compensated, null, null, true, Set.of()),
+        COMPLETED(Completed, null, null, true, Set.of()),
+        FAILED_TO_COMPENSATE(FailedToCompensate, null, null, true, Set.of()),
+        FAILED_TO_COMPLETE(FailedToComplete, null, null, true, Set.of()),
+
+        CLIENT_COMPENSATING(Compensating, COMPENSATED, FAILED_TO_COMPENSATE, false, Set.of(Compensated, FailedToCompensate)),
+        CLIENT_COMPLETING(Completing, COMPLETED, FAILED_TO_COMPLETE, false, Set.of(Completed, FailedToComplete)),
+        COMPENSATING(Compensating, COMPENSATED, FAILED_TO_COMPENSATE, false, Set.of(Compensated, FailedToCompensate)),
+        COMPLETING(Completing, COMPLETED, FAILED_TO_COMPLETE, false, Set.of(Compensated, FailedToCompensate));
+
+        private final ParticipantStatus participantStatus;
+        private final Status successFinalStatus;
+        private final Status failedFinalStatus;
+        private final boolean finalState;
+        private final Set<ParticipantStatus> validNextStates;
+
+        Status(ParticipantStatus participantStatus,
+               Status successFinalStatus,
+               Status failedFinalStatus,
+               boolean finalState,
+               Set<ParticipantStatus> validNextStates) {
+            this.participantStatus = participantStatus;
+            this.successFinalStatus = successFinalStatus;
+            this.failedFinalStatus = failedFinalStatus;
+            this.finalState = finalState;
+            this.validNextStates = validNextStates;
+        }
+
+        public ParticipantStatus participantStatus() {
+            return participantStatus;
+        }
+
+        public boolean isFinal() {
+            return finalState;
+        }
+
+        public boolean validateNextStatus(ParticipantStatus participantStatus) {
+            return validNextStates.contains(participantStatus);
+        }
+
+        public Optional<ParticipantStatus> successFinalStatus() {
+            return Optional.ofNullable(successFinalStatus.participantStatus());
+        }
+
+        public Optional<ParticipantStatus> failedFinalStatus() {
+            return Optional.ofNullable(failedFinalStatus.participantStatus);
+        }
+    }
 
     //TODO: Participant needs custom states
     enum SendingStatus {
@@ -80,10 +139,6 @@ public class Participant {
                 .filter(s -> !s.isBlank())
                 .map(Link::valueOf)
                 .forEach(this.compensatorLinks::add);
-    }
-
-    ParticipantStatus getParticipantStatus() {
-        return participantStatus.get();
     }
 
     public Optional<Link> getCompensatorLink(String rel) {
@@ -133,10 +188,6 @@ public class Participant {
         return isForgotten;
     }
 
-    public void setAfterLRASuccessfullyCalledIfEnlisted() {
-        isAfterLRASuccessfullyCalledIfEnlisted = true;
-    }
-
     public boolean isAfterLRASuccessfullyCalledIfEnlisted() {
         return isAfterLRASuccessfullyCalledIfEnlisted || getAfterURI().isEmpty();
     }
@@ -148,30 +199,45 @@ public class Participant {
 
     public boolean isInEndStateOrListenerOnly() {
         return isListenerOnly()
-                || Set.of(ParticipantStatus.FailedToComplete,
-                ParticipantStatus.FailedToCompensate,
-                ParticipantStatus.Completed,
-                ParticipantStatus.Compensated)
-                .contains(this.participantStatus.get());
+                || status.get().isFinal();
     }
 
     public boolean isInEndStateOrListenerOnlyForTerminationType(boolean isCompensate) {
-        ParticipantStatus status = this.participantStatus.get();
+        Status status = this.status.get();
         if (isCompensate) {
-            return status == ParticipantStatus.FailedToCompensate ||
-                    status == ParticipantStatus.Compensated ||
+            return status == Status.FAILED_TO_COMPENSATE ||
+                    status == Status.COMPENSATED ||
                     isListenerOnly();
         } else {
-            return status == ParticipantStatus.FailedToComplete ||
-                    status == ParticipantStatus.Completed ||
+            return status == Status.FAILED_TO_COMPLETE ||
+                    status == Status.COMPLETED ||
                     isListenerOnly();
         }
     }
 
     boolean sendCancel(LRA lra) {
-        if (!sendingStatus.compareAndSet(SendingStatus.NOT_SENDING, SendingStatus.SENDING)) return false;
         Optional<URI> endpointURI = getCompensateURI();
+        if (!sendingStatus.compareAndSet(SendingStatus.NOT_SENDING, SendingStatus.SENDING)) return false;
         try {
+
+            // If the participant does not support idempotency then it MUST be able to report its status 
+            // by annotating one of the methods with the @Status annotation which should report the status
+            // in case we can't retrieve status from participant just retry n times
+            ParticipantStatus reportedClientStatus = retrieveStatus(lra).orElse(null);
+            if (reportedClientStatus == Compensated) {
+                LOGGER.log(Level.INFO, "Participant reports it is compensated.");
+                status.set(Status.COMPENSATED);
+                return true;
+            } else if (reportedClientStatus == FailedToCompensate) {
+                LOGGER.log(Level.INFO, "Participant reports it failed to compensate.");
+                status.set(Status.FAILED_TO_COMPENSATE);
+                return true;
+            } else if (remainingCloseAttempts.decrementAndGet() <= 0) {
+                LOGGER.log(Level.INFO, "Participant didn't report final status after {0} status call retries.", RETRY_CNT);
+                status.set(Status.FAILED_TO_COMPENSATE);
+                return true;
+            }
+
             Response response = client.target(endpointURI.get())
                     .request()
                     .headers(lra.headers())
@@ -182,13 +248,16 @@ public class Participant {
             switch (response.getStatus()) {
                 // complete or compensated
                 case 200:
-                case 202:
                 case 410:
                     LOGGER.log(Level.INFO, "Compensated participant of LRA {0} {1}", new Object[] {lra.lraId, this.getCompensateURI()});
-                    participantStatus.set(ParticipantStatus.Compensated);
+                    status.set(Status.COMPENSATED);
                     return true;
 
                 // retryable
+                case 202:
+                    // Still compensating, check with @Status later
+                    this.status.set(Status.CLIENT_COMPENSATING);
+                    return false;
                 case 409:
                 case 404:
                 case 503:
@@ -200,12 +269,11 @@ public class Participant {
             if (remainingCloseAttempts.decrementAndGet() <= 0) {
                 LOGGER.log(Level.WARNING, "Failed to compensate participant of LRA {0} {1} {2}",
                         new Object[] {lra.lraId, this.getCompensateURI(), e.getMessage()});
-                participantStatus.set(ParticipantStatus.FailedToCompensate);
+                status.set(Status.FAILED_TO_COMPENSATE);
+            } else {
+                status.set(Status.COMPENSATING);
             }
-            // If the participant does not support idempotency then it MUST be able to report its status 
-            // by annotating one of the methods with the @Status annotation which should report the status
-            // in case we can't retrieve status from participant just retry n times
-            retrieveStatus(lra).ifPresent(participantStatus::set);
+
         } finally {
             sendingStatus.set(SendingStatus.NOT_SENDING);
         }
@@ -213,9 +281,27 @@ public class Participant {
     }
 
     boolean sendComplete(LRA lra) {
-        if (!sendingStatus.compareAndSet(SendingStatus.NOT_SENDING, SendingStatus.SENDING)) return false;
         Optional<URI> endpointURI = getCompleteURI();
+        if (!sendingStatus.compareAndSet(SendingStatus.NOT_SENDING, SendingStatus.SENDING)) return false;
         try {
+            // If the participant does not support idempotency then it MUST be able to report its status 
+            // by annotating one of the methods with the @Status annotation which should report the status
+            // in case we can't retrieve status from participant just retry n times
+            ParticipantStatus reportedClientStatus = retrieveStatus(lra).orElse(null);
+            if (reportedClientStatus == Completed) {
+                LOGGER.log(Level.INFO, "Participant reports it is completed.");
+                status.set(Status.COMPLETED);
+                return true;
+            } else if (reportedClientStatus == FailedToComplete) {
+                LOGGER.log(Level.INFO, "Participant reports it failed to complete.");
+                status.set(Status.FAILED_TO_COMPLETE);
+                return true;
+            } else if (remainingCloseAttempts.decrementAndGet() <= 0) {
+                LOGGER.log(Level.INFO, "Participant didn't report final status after {0} status call retries.", RETRY_CNT);
+                status.set(Status.FAILED_TO_COMPLETE);
+                return true;
+            }
+            
             Response response = client.target(endpointURI.get())
                     .request()
                     .headers(lra.headers())
@@ -225,12 +311,15 @@ public class Participant {
             switch (response.getStatus()) {
                 // complete or compensated
                 case 200:
-                case 202:
                 case 410:
-                    participantStatus.set(ParticipantStatus.Completed);
+                    status.set(Status.COMPLETED);
                     return true;
 
                 // retryable
+                case 202:
+                    // Still completing, check with @Status later
+                    this.status.set(Status.CLIENT_COMPLETING);
+                    return false;
                 case 409:
                 case 404:
                 case 503:
@@ -242,12 +331,10 @@ public class Participant {
             if (remainingCloseAttempts.decrementAndGet() <= 0) {
                 LOGGER.log(Level.WARNING, "Failed to complete participant of LRA {0} {1} {2}",
                         new Object[] {lra.lraId, this.getCompleteURI(), e.getMessage()});
-                participantStatus.set(ParticipantStatus.FailedToComplete);
+                status.set(Status.FAILED_TO_COMPLETE);
+            } else {
+                status.set(Status.COMPLETING);
             }
-            // If the participant does not support idempotency then it MUST be able to report its status 
-            // by annotating one of the methods with the @Status annotation which should report the status
-            // in case we can't retrieve status from participant just retry n times
-            retrieveStatus(lra).ifPresent(participantStatus::set);
         } finally {
             sendingStatus.set(SendingStatus.NOT_SENDING);
         }
@@ -287,8 +374,19 @@ public class Participant {
                         .buildGet().invoke();
                 int responseStatus = response.getStatus();
                 if (responseStatus == 503 || responseStatus == 202) { //todo include other retriables
-                } else if (responseStatus != 410) {
-                    return Optional.of(ParticipantStatus.valueOf(response.readEntity(String.class)));
+                } else if (responseStatus == 410) { //GONE
+                    //Completing -> FailedToComplete ...
+                    return status.get().failedFinalStatus();
+                } else {
+                    ParticipantStatus reportedStatus = valueOf(response.readEntity(String.class));
+                    Status currentStatus = status.get();
+                    if (currentStatus.validateNextStatus(reportedStatus)) {
+                        return Optional.of(reportedStatus);
+                    } else {
+                        LOGGER.log(Level.WARNING, "Client reports unexpected status {0}, current participant state is {1}",
+                                new Object[] {reportedStatus, currentStatus});
+                        return Optional.empty();
+                    }
                 }
             } catch (Exception e) { // IllegalArgumentException: No enum constant org.eclipse.microprofile.lra.annotation.ParticipantStatus.
                 LOGGER.log(Level.SEVERE, "Error when getting participant status. " + statusURI, e);

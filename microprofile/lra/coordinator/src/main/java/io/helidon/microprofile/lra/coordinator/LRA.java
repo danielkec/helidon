@@ -234,7 +234,7 @@ public class LRA {
         }
         return allSent;
     }
-
+    
     boolean sendForget() { //todo could gate with isprocessing here as well
         boolean areAllThatNeedToBeForgotten = true;
         for (Participant participant : participants) {
@@ -247,7 +247,7 @@ public class LRA {
     public boolean isReadyToDelete() {
         return whenReadyToDelete != 0 && whenReadyToDelete < System.currentTimeMillis();
     }
-
+    
 
     public boolean areAllAfterLRASuccessfullyCalledOrForgotten() {
         for (Participant participant : participants) {

@@ -91,7 +91,7 @@ import org.junit.jupiter.api.Test;
 @AddExtension(SchedulingCdiExtension.class)
 @AddConfig(key = "io.helidon.microprofile.lra.coordinator.CoordinatorApplication."
         + RoutingName.CONFIG_KEY_NAME, value = "coordinator")
-@AddConfig(key = "server.sockets.0.name", value = "coordinator1")
+@AddConfig(key = "server.sockets.0.name", value = "coordinator")
 @AddConfig(key = "server.sockets.0.port", value = "8070")
 @AddConfig(key = "server.sockets.0.bind-address", value = "localhost")
 public class BasicTest {
@@ -249,15 +249,14 @@ public class BasicTest {
                 .path(TestApplication.RecoveryStatus.PATH_START_LRA)
                 .request()
                 .async()
-                .put(Entity.text(ParticipantStatus.Completing.name()))// report from @Status method
+                .put(Entity.text(ParticipantStatus.Compensating.name()))// report from @Status method
                 .get(5, TimeUnit.SECONDS);
 
         assertThat(response.getStatus(), is(500));
         URI lraId = UriBuilder.fromPath(response.getHeaderString(LRA_HTTP_CONTEXT_HEADER)).build();
         assertThat(await(TestApplication.RecoveryStatus.CS_START_LRA, lraId), is(lraId));
         waitForRecovery(lraId);
-        assertThat("@Status method should have been called by compensator",
-                await(TestApplication.RecoveryStatus.CS_STATUS, lraId), is(lraId));
+        assertThat(await(TestApplication.RecoveryStatus.CS_STATUS, lraId), is(lraId));
         assertThat(await(TestApplication.RecoveryStatus.CS_COMPENSATE_SECOND, lraId), is(lraId));
     }
 
@@ -268,7 +267,7 @@ public class BasicTest {
                 .path(TestApplication.RecoveryStatus.PATH_START_LRA)
                 .request()
                 .async()
-                .put(Entity.text(ParticipantStatus.Completed.name()))// report from @Status method
+                .put(Entity.text(ParticipantStatus.Compensated.name()))// report from @Status method
                 .get(5, TimeUnit.SECONDS);
 
         assertThat(response.getStatus(), is(500));

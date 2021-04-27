@@ -89,7 +89,6 @@ public class LraPersistentRegistry {
                 ioException.printStackTrace();
             }
             System.out.println("+++++++++++++++++++");
-            throw new RuntimeException(e);
         }
     }
 

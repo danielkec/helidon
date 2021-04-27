@@ -20,6 +20,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
@@ -35,6 +36,7 @@ import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriBuilder;
 
 import io.helidon.common.configurable.ScheduledThreadPoolSupplier;
+import io.helidon.common.reactive.Single;
 import io.helidon.microprofile.config.ConfigCdiExtension;
 import io.helidon.microprofile.lra.coordinator.Coordinator;
 import io.helidon.microprofile.lra.coordinator.CoordinatorApplication;
@@ -51,8 +53,10 @@ import io.helidon.microprofile.tests.junit5.HelidonTest;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
 
 import org.eclipse.microprofile.lra.annotation.LRAStatus;
+import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
 import org.glassfish.jersey.ext.cdi1x.internal.CdiComponentProvider;
 import org.hamcrest.core.AnyOf;
 import org.junit.jupiter.api.AfterAll;
@@ -80,6 +84,7 @@ import org.junit.jupiter.api.Test;
 @AddBean(TestApplication.DontEnd.class)
 @AddBean(TestApplication.Timeout.class)
 @AddBean(TestApplication.Recovery.class)
+@AddBean(TestApplication.RecoveryStatus.class)
 // Mock coordinator
 @AddBean(Coordinator.class)
 @AddBean(CoordinatorApplication.class)
@@ -94,9 +99,23 @@ public class BasicTest {
     private static ScheduledExecutorService executor;
     private final Map<String, CompletableFuture<URI>> completionMap = new HashMap<>();
 
-    public synchronized CompletableFuture<URI> getCompletable(String key) {
-        completionMap.putIfAbsent(key, new CompletableFuture<>());
-        return completionMap.get(key);
+    @SuppressWarnings("unchecked")
+    public synchronized <T> CompletableFuture<T> getCompletable(String key, URI lraId) {
+        String combinedKey = key + Optional.ofNullable(lraId).map(URI::toASCIIString).orElse("");
+        completionMap.putIfAbsent(combinedKey, new CompletableFuture<>());
+        return (CompletableFuture<T>) completionMap.get(combinedKey);
+    }
+
+    public synchronized <T> CompletableFuture<T> getCompletable(String key) {
+        return getCompletable(key, null);
+    }
+
+    public <T> T await(String key, URI lraId) {
+        return Single.<T>create(getCompletable(key, lraId), true).await(10, TimeUnit.SECONDS);
+    }
+
+    public <T> T await(String key) {
+        return Single.<T>create(getCompletable(key), true).await(10, TimeUnit.SECONDS);
     }
 
     @Inject
@@ -121,7 +140,7 @@ public class BasicTest {
                 .put(Entity.text(""))
                 .get(10, TimeUnit.SECONDS);
         assertThat(response.getStatus(), AnyOf.anyOf(is(200), is(204)));
-        getCompletable("start-and-close").get(10, TimeUnit.SECONDS);
+        await("start-and-close");
     }
 
     @Test
@@ -133,7 +152,7 @@ public class BasicTest {
                 .put(Entity.text(""))
                 .get(10, TimeUnit.SECONDS);
         assertThat(response.getStatus(), AnyOf.anyOf(is(200), is(204)));
-        getCompletable("start-and-close-cdi").get(10, TimeUnit.SECONDS);
+        await("start-and-close-cdi");
     }
 
     @Test
@@ -145,7 +164,7 @@ public class BasicTest {
                 .put(Entity.text(""))
                 .get(2, TimeUnit.SECONDS);
         assertThat(response.getStatus(), AnyOf.anyOf(is(200), is(204)));
-        getCompletable("start-and-after").get(2, TimeUnit.SECONDS);
+        await("start-and-after");
     }
 
     @Test
@@ -157,7 +176,7 @@ public class BasicTest {
                 .put(Entity.text(""))
                 .get(10, TimeUnit.SECONDS);
         assertThat(response.getStatus(), AnyOf.anyOf(is(200), is(204)));
-        URI lraId = getCompletable("first-not-ending").get(10, TimeUnit.SECONDS);
+        URI lraId = await("first-not-ending");
         assertThat(coordinatorClient.status(lraId), is(LRAStatus.Active));
         assertThat(target.path("dont-end")
                 .path("second-ending")
@@ -166,7 +185,7 @@ public class BasicTest {
                 .async()
                 .put(Entity.text(""))
                 .get(10, TimeUnit.SECONDS).getStatus(), AnyOf.anyOf(is(200), is(204)));
-        getCompletable("second-ending").get(10, TimeUnit.SECONDS);
+        await("second-ending");
         assertClosedOrNotFound(lraId);
     }
 
@@ -179,8 +198,8 @@ public class BasicTest {
                 .put(Entity.text(""))
                 .get(2, TimeUnit.SECONDS);
         assertThat(response.getStatus(), is(200));
-        getCompletable("timeout").get(5, TimeUnit.SECONDS);
-        getCompletable("timeout-compensated").get(5, TimeUnit.SECONDS);
+        await("timeout");
+        await("timeout-compensated");
     }
 
     @Test
@@ -194,11 +213,11 @@ public class BasicTest {
                 .get(5, TimeUnit.SECONDS);
         assertThat(response.getStatus(), is(500));
         URI lraId = UriBuilder.fromPath(response.getHeaderString(LRA_HTTP_CONTEXT_HEADER)).build();
-        assertThat(getCompletable("recovery-compensated-first").get(5, TimeUnit.SECONDS), is(lraId));
+        assertThat(await("recovery-compensated-first"), is(lraId));
         LocalDateTime first = LocalDateTime.now();
         System.out.println("First compensate attempt after " + Duration.between(start, first));
         waitForRecovery(lraId);
-        assertThat(getCompletable("recovery-compensated-second").get(8, TimeUnit.SECONDS), is(lraId));
+        assertThat(await("recovery-compensated-second"), is(lraId));
         LocalDateTime second = LocalDateTime.now();
         System.out.println("Second compensate attempt after " + Duration.between(first, second));
     }
@@ -214,13 +233,53 @@ public class BasicTest {
                 .get(5, TimeUnit.SECONDS);
         assertThat(response.getStatus(), is(200));
         URI lraId = UriBuilder.fromPath(response.getHeaderString(LRA_HTTP_CONTEXT_HEADER)).build();
-        assertThat(getCompletable("recovery-completed-first").get(2, TimeUnit.SECONDS), is(lraId));
+        assertThat(await("recovery-completed-first"), is(lraId));
         LocalDateTime first = LocalDateTime.now();
         System.out.println("First complete attempt after " + Duration.between(start, first));
         waitForRecovery(lraId);
-        assertThat(getCompletable("recovery-completed-second").get(8, TimeUnit.SECONDS), is(lraId));
+        assertThat(await("recovery-completed-second"), is(lraId));
         LocalDateTime second = LocalDateTime.now();
         System.out.println("Second complete attempt after " + Duration.between(first, second));
+    }
+
+    @Test
+    void statusRecoveryTest(WebTarget target) throws ExecutionException, InterruptedException, TimeoutException {
+
+        Response response = target.path(TestApplication.RecoveryStatus.PATH_BASE)
+                .path(TestApplication.RecoveryStatus.PATH_START_LRA)
+                .request()
+                .async()
+                .put(Entity.text(ParticipantStatus.Completing.name()))// report from @Status method
+                .get(5, TimeUnit.SECONDS);
+
+        assertThat(response.getStatus(), is(500));
+        URI lraId = UriBuilder.fromPath(response.getHeaderString(LRA_HTTP_CONTEXT_HEADER)).build();
+        assertThat(await(TestApplication.RecoveryStatus.CS_START_LRA, lraId), is(lraId));
+        waitForRecovery(lraId);
+        assertThat("@Status method should have been called by compensator",
+                await(TestApplication.RecoveryStatus.CS_STATUS, lraId), is(lraId));
+        assertThat(await(TestApplication.RecoveryStatus.CS_COMPENSATE_SECOND, lraId), is(lraId));
+    }
+
+    @Test
+    void statusNonRecoveryTest(WebTarget target) throws ExecutionException, InterruptedException, TimeoutException {
+
+        Response response = target.path(TestApplication.RecoveryStatus.PATH_BASE)
+                .path(TestApplication.RecoveryStatus.PATH_START_LRA)
+                .request()
+                .async()
+                .put(Entity.text(ParticipantStatus.Completed.name()))// report from @Status method
+                .get(5, TimeUnit.SECONDS);
+
+        assertThat(response.getStatus(), is(500));
+        URI lraId = UriBuilder.fromPath(response.getHeaderString(LRA_HTTP_CONTEXT_HEADER)).build();
+        assertThat(await(TestApplication.RecoveryStatus.CS_START_LRA, lraId), is(lraId));
+        waitForRecovery(UriBuilder.fromPath("fake_non_existent").build());// just wait for any recovery
+        waitForRecovery(UriBuilder.fromPath("fake_non_existent").build());// just wait for any recovery
+        assertThat("@Status method should have been called by compensator", 
+                await(TestApplication.RecoveryStatus.CS_STATUS, lraId), is(lraId));
+        assertThat("Second compensation shouldn't come, we reported Completed with @Status method",
+                getCompletable(TestApplication.RecoveryStatus.CS_COMPENSATE_SECOND, lraId).isDone(), is(not(true)));
     }
 
     private void assertClosedOrNotFound(URI lraId) {
@@ -230,7 +289,7 @@ public class BasicTest {
             // in case coordinator don't retain closed lra long enough
         }
     }
-    
+
     private void waitForRecovery(URI lraId) {
         for (int i = 0; i < 10; i++) {
             try {

@@ -23,6 +23,7 @@ public class LRAAutoDiscoverable implements AutoDiscoverable {
     public void configure(javax.ws.rs.core.FeatureContext ctx) {
         ctx.register(JaxrsServerFilter.class)
                 .register(JaxrsClientFilter.class)
-                .register(StatusBodyReader.class);
+                .register(StatusBodyReader.LRAStatusBodyReader.class)
+                .register(StatusBodyReader.ParticipantStatusBodyReader.class);
     }
 }

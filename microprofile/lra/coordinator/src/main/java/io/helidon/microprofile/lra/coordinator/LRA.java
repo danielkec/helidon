@@ -20,7 +20,6 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
@@ -41,7 +40,6 @@ import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_PARENT_
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVERY_HEADER;
 
 import org.eclipse.microprofile.lra.annotation.LRAStatus;
-import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
 
 @XmlRootElement
 @XmlAccessorType(XmlAccessType.FIELD)
@@ -237,17 +235,6 @@ public class LRA {
         return allSent;
     }
 
-    void tryRetrieveStatus() {
-        if (!hasStatusEndpoints()) {
-            return;
-        }
-        for (Participant participant : participants) {
-            Optional<URI> statusURI = participant.getStatusURI();
-            if (statusURI.isEmpty() || participant.isInEndStateOrListenerOnly()) continue;
-            participant.retrieveStatus(this, statusURI.get());
-        }
-    }
-
     boolean sendForget() { //todo could gate with isprocessing here as well
         boolean areAllThatNeedToBeForgotten = true;
         for (Participant participant : participants) {
@@ -257,33 +244,10 @@ public class LRA {
         return areAllThatNeedToBeForgotten;
     }
 
-    public void setProcessing(boolean isProcessing) {
-        this.isProcessing = isProcessing;
-    }
-
-    public boolean isProcessing() {
-        return isProcessing;
-    }
-
     public boolean isReadyToDelete() {
         return whenReadyToDelete != 0 && whenReadyToDelete < System.currentTimeMillis();
     }
 
-    public boolean hasStatusEndpoints() {
-        return participants.stream()
-                .map(Participant::getStatusURI)
-                .anyMatch(Optional::isPresent);
-    }
-
-    public boolean areAnyInFailedState() {
-        for (Participant participant : participants) {
-            if (participant.getParticipantStatus() == ParticipantStatus.FailedToComplete ||
-                    participant.getParticipantStatus() == ParticipantStatus.FailedToCompensate) {
-                return true;
-            }
-        }
-        return false;
-    }
 
     public boolean areAllAfterLRASuccessfullyCalledOrForgotten() {
         for (Participant participant : participants) {
@@ -295,16 +259,6 @@ public class LRA {
     public boolean areAllInEndState() {
         for (Participant participant : participants) {
             if (!participant.isInEndStateOrListenerOnly()) return false;
-        }
-        return true;
-    }
-
-    public boolean areAllInEndStateCompensatedOrFailedToCompensate() {
-        for (Participant participant : participants) {
-            if (participant.getParticipantStatus() != ParticipantStatus.Compensated
-                    && participant.getParticipantStatus() != ParticipantStatus.FailedToCompensate) {
-                return false;
-            }
         }
         return true;
     }

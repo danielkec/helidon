@@ -40,7 +40,9 @@ import org.eclipse.microprofile.lra.annotation.AfterLRA;
 import org.eclipse.microprofile.lra.annotation.Compensate;
 import org.eclipse.microprofile.lra.annotation.Complete;
 import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
+import org.eclipse.microprofile.lra.annotation.Status;
 import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
+
 
 @ApplicationScoped
 public class TestApplication extends Application {
@@ -50,10 +52,11 @@ public class TestApplication extends Application {
         return Set.of(
                 StartAndCloseCdi.class,
                 StartAndAfter.class,
-                StartAndClose.class, 
-                DontEnd.class, 
-                Timeout.class, 
-                Recovery.class
+                StartAndClose.class,
+                DontEnd.class,
+                Timeout.class,
+                Recovery.class,
+                RecoveryStatus.class
         );
     }
 
@@ -233,6 +236,72 @@ public class TestApplication extends Application {
             }
             return LRAResponse.completed();
         }
+    }
+
+    @ApplicationScoped
+    @Path(RecoveryStatus.PATH_BASE)
+    public static class RecoveryStatus {
+
+        static final String PATH_BASE = "recovery-status";
+        static final String PATH_START_LRA = "start-compensate";
+        static final String CS_START_LRA = PATH_BASE + PATH_START_LRA;
+        static final String CS_COMPENSATE_FIRST = CS_START_LRA + "compensate-first";
+        static final String CS_COMPENSATE_SECOND = CS_START_LRA + "compensate-second";
+        static final String CS_STATUS = CS_START_LRA + "status";
+        static final String CS_EXPECTED_STATUS = CS_STATUS + "expected";
+
+        @Inject
+        BasicTest basicTest;
+
+        @PUT
+        @Path(PATH_START_LRA)
+        @LRA(value = LRA.Type.REQUIRES_NEW)
+        public Response startCompensateLRA(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
+                                           @HeaderParam(LRA_HTTP_RECOVERY_HEADER) URI recoveryId,
+                                           ParticipantStatus reportStatus) {
+            basicTest.getCompletable(CS_START_LRA, lraId).complete(lraId);
+            basicTest.getCompletable(CS_EXPECTED_STATUS, lraId).complete(reportStatus);
+            // Force to compensate
+            return Response.serverError()
+                    .header(LRA_HTTP_CONTEXT_HEADER, lraId.toASCIIString())
+                    .header(LRA_HTTP_RECOVERY_HEADER, recoveryId.toASCIIString())
+                    .build();
+        }
+
+        @PUT
+        @Path("/compensate")
+        @Produces(MediaType.APPLICATION_JSON)
+        @Compensate
+        public Response compensateLRA(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
+                                      @HeaderParam(LRA_HTTP_RECOVERY_HEADER) URI recoveryId) {
+
+            CompletableFuture<URI> completable = basicTest.getCompletable(CS_COMPENSATE_FIRST, lraId);
+            boolean secondCall = completable.isDone();
+            completable.complete(lraId);
+            if (secondCall) {
+                basicTest.getCompletable(CS_COMPENSATE_SECOND, lraId).complete(lraId);
+            } else {
+                try {
+                    // sleep longer than coordinator waits for compensate response
+                    // to force it to use @Status
+                    // TODO: get timeout from mock coordinator
+                    Thread.sleep(3000);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                return LRAResponse.failedToComplete();
+            }
+            return LRAResponse.compensated();
+        }
+
+        @Status
+        public ParticipantStatus status(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId) {
+            basicTest.getCompletable(CS_STATUS, lraId).complete(lraId);
+            // we slept thru the first compensate call, let coordinator know if we want it to try compensate again
+            // retrieve saved status from #startCompensateLRA
+            return basicTest.await(CS_EXPECTED_STATUS, lraId);
+        }
+
     }
 
     @ApplicationScoped

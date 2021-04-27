@@ -100,7 +100,13 @@ public class ParticipantResource {
                            @PathParam("methodName") String methodName) {
         try {
             ParticipantStatus result = (ParticipantStatus) participantService.invoke(fqdn, methodName, lraId, null);
-            return Response.ok(result).build();
+            if(result == null){
+                // If the participant has already responded successfully to an @Compensate or @Complete 
+                // method invocation then it MAY report 410 Gone HTTP status code 
+                // or in the case of non-JAX-RS method returning ParticipantStatus null.
+                return Response.status(Response.Status.GONE).build();
+            }
+            return Response.ok(result.name()).build();
         } catch (InvocationTargetException e) {
             return Response.ok().build();
         }

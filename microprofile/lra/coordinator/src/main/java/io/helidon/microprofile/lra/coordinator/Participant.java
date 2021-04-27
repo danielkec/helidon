@@ -202,6 +202,10 @@ public class Participant {
                         new Object[] {lra.lraId, this.getCompensateURI(), e.getMessage()});
                 participantStatus.set(ParticipantStatus.FailedToCompensate);
             }
+            // If the participant does not support idempotency then it MUST be able to report its status 
+            // by annotating one of the methods with the @Status annotation which should report the status
+            // in case we can't retrieve status from participant just retry n times
+            retrieveStatus(lra).ifPresent(participantStatus::set);
         } finally {
             sendingStatus.set(SendingStatus.NOT_SENDING);
         }
@@ -240,6 +244,10 @@ public class Participant {
                         new Object[] {lra.lraId, this.getCompleteURI(), e.getMessage()});
                 participantStatus.set(ParticipantStatus.FailedToComplete);
             }
+            // If the participant does not support idempotency then it MUST be able to report its status 
+            // by annotating one of the methods with the @Status annotation which should report the status
+            // in case we can't retrieve status from participant just retry n times
+            retrieveStatus(lra).ifPresent(participantStatus::set);
         } finally {
             sendingStatus.set(SendingStatus.NOT_SENDING);
         }
@@ -269,28 +277,24 @@ public class Participant {
     }
 
 
-    public void retrieveStatus(LRA lra, URI statusURI) {
-        Response response;
-        int responseStatus;
-        String readEntity;
-        ParticipantStatus status;
-        try {
-            response = client.target(statusURI)
-                    .request()
-                    .headers(lra.headers())
-                    .buildGet().invoke();
-            responseStatus = response.getStatus();
-            if (responseStatus == 503 || responseStatus == 202) { //todo include other retriables
-            } else if (responseStatus != 410) {
-                readEntity = response.readEntity(String.class);
-                status = ParticipantStatus.valueOf(readEntity);
-                participantStatus.set(status);
-            } else {
-                participantStatus.set(lra.isCancel ? ParticipantStatus.Compensated : ParticipantStatus.Completed); // not exactly accurate as it's GONE not explicitly completed or compensated
+    public Optional<ParticipantStatus> retrieveStatus(LRA lra) {
+        Optional<URI> statusURI = this.getStatusURI();
+        if (statusURI.isPresent()) {
+            try {
+                Response response = client.target(statusURI.get())
+                        .request()
+                        .headers(lra.headers())
+                        .buildGet().invoke();
+                int responseStatus = response.getStatus();
+                if (responseStatus == 503 || responseStatus == 202) { //todo include other retriables
+                } else if (responseStatus != 410) {
+                    return Optional.of(ParticipantStatus.valueOf(response.readEntity(String.class)));
+                }
+            } catch (Exception e) { // IllegalArgumentException: No enum constant org.eclipse.microprofile.lra.annotation.ParticipantStatus.
+                LOGGER.log(Level.SEVERE, "Error when getting participant status. " + statusURI, e);
             }
-        } catch (Exception e) { // IllegalArgumentException: No enum constant org.eclipse.microprofile.lra.annotation.ParticipantStatus.
-            LOGGER.log(Level.SEVERE, "Error when sending status.", e);
         }
+        return Optional.empty();
     }
 
     public boolean sendForget(LRA lra) {

@@ -19,6 +19,8 @@ import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.inject.Inject;
@@ -28,6 +30,8 @@ import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.core.Response;
+
+import io.helidon.common.reactive.Single;
 
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVERY_HEADER;
@@ -40,6 +44,9 @@ import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
 @Path("lra-client-cdi-methods")
 public class ParticipantResource {
     //http://127.0.0.1:43733/lra-client-cdi-methods/complete/io.helidon.microprofile.lra.TestApplication$StartAndCloseCdi/complete
+
+    private static final Logger LOGGER = Logger.getLogger(ParticipantResource.class.getName());
+
     @Inject
     private ParticipantService participantService;
 
@@ -53,6 +60,8 @@ public class ParticipantResource {
             Object result = participantService.invoke(fqdn, methodName, lraId, recoveryId);
             if (result instanceof Response) {
                 return (Response) result;
+            } else if (result instanceof ParticipantStatus) {
+                return Response.ok(((ParticipantStatus) result).name()).build();
             } else {
                 return Response.ok(result).build();
             }
@@ -69,8 +78,8 @@ public class ParticipantResource {
                                               @PathParam("methodName") String methodName) {
         try {
             Object result = participantService.invoke(fqdn, methodName, lraId, recoveryId);
-            if (result instanceof CompletionStage) {
-                return (CompletionStage<Response>) result;
+            if (CompletionStage.class.isAssignableFrom(result.getClass())) {
+                return ((CompletionStage<?>) result).thenApply(o -> (Response) o);
             } else {
                 return CompletableFuture.completedFuture((Response) result);
             }
@@ -95,20 +104,41 @@ public class ParticipantResource {
 
     @GET
     @Path("/status/{fqdn}/{methodName}")
-    public Response status(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
-                           @PathParam("fqdn") String fqdn,
-                           @PathParam("methodName") String methodName) {
+    public CompletionStage<Response> status(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
+                                            @PathParam("fqdn") String fqdn,
+                                            @PathParam("methodName") String methodName) {
         try {
-            ParticipantStatus result = (ParticipantStatus) participantService.invoke(fqdn, methodName, lraId, null);
-            if(result == null){
+            Object result = participantService.invoke(fqdn, methodName, lraId, null);
+            if (result == null) {
                 // If the participant has already responded successfully to an @Compensate or @Complete 
                 // method invocation then it MAY report 410 Gone HTTP status code 
                 // or in the case of non-JAX-RS method returning ParticipantStatus null.
-                return Response.status(Response.Status.GONE).build();
+                return Single.just(Response.status(Response.Status.GONE).build());
             }
-            return Response.ok(result.name()).build();
+            if (result instanceof CompletionStage) {
+                return ((CompletionStage<?>) result).thenApply(o -> {
+                    if (o == null) {
+                        return Response.status(Response.Status.GONE).build();
+                    } else if (ParticipantStatus.class.isAssignableFrom(o.getClass())) {
+                        return Response.ok(((ParticipantStatus) o).name()).build();
+                    } else {
+                        LOGGER.log(Level.WARNING,
+                                "Unexpected type {0} returned within completable stage from cdi @Status method {1}",
+                                new Object[] {result, methodName});
+                        return Response.ok().build();
+                    }
+                });
+            } else if (Response.class.isAssignableFrom(result.getClass())) {
+                return Single.just((Response) result);
+            } else if (ParticipantStatus.class.isAssignableFrom(result.getClass())) {
+                return Single.just(Response.ok(((ParticipantStatus) result).name()).build());
+            } else {
+                LOGGER.log(Level.WARNING, "Unexpected type {0} returned from cdi @Status method {1}",
+                        new Object[] {result, methodName});
+                return Single.just(Response.ok().build());
+            }
         } catch (InvocationTargetException e) {
-            return Response.ok().build();
+            return Single.just(Response.ok().build());
         }
     }
 

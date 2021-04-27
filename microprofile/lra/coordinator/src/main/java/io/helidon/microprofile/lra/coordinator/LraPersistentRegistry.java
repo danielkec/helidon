@@ -74,6 +74,8 @@ public class LraPersistentRegistry {
                         Participant.class,
                         LRAStatus.class,
                         Participant.AfterLraStatus.class,
+                        Participant.SendingStatus.class,
+                        Participant.Status.class,
                         ParticipantStatus.class);
                 Unmarshaller unmarshaller = context.createUnmarshaller();
                 unmarshaller.setAdapter(new Link.JaxbAdapter());
@@ -100,6 +102,8 @@ public class LraPersistentRegistry {
                     Participant.class, 
                     LRAStatus.class,
                     Participant.AfterLraStatus.class,
+                    Participant.SendingStatus.class,
+                    Participant.Status.class,
                     ParticipantStatus.class);
             Marshaller mar = context.createMarshaller();
             mar.setAdapter(new Link.JaxbAdapter());

@@ -21,8 +21,9 @@ import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+
+import javax.ws.rs.core.Response;
 
 import org.eclipse.microprofile.lra.annotation.AfterLRA;
 import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
@@ -31,16 +32,15 @@ import org.jboss.jandex.ClassInfo;
 import org.jboss.jandex.DotName;
 import org.jboss.jandex.Index;
 import org.jboss.jandex.Indexer;
-import org.jboss.jandex.Type;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-
-import javax.ws.rs.core.Response;
 
 public class IndexerTest {
 
     private Index index;
 
     @Test
+    @Disabled
     void name() throws IOException, NoSuchMethodException {
         ClassLoader cl = Thread.currentThread().getContextClassLoader();
         Indexer indexer = new Indexer();
@@ -53,15 +53,14 @@ public class IndexerTest {
         Map<String, AnnotationInstance> annotations = new HashMap<>();
         Method m = TestInnerClass.class.getMethod("ok");
         ClassInfo clazz = index.getClassByName(DotName.createSimple(m.getDeclaringClass().getName()));
-       // deepScanLraMethod(clazz, annotations, m.getName());
+        // deepScanLraMethod(clazz, annotations, m.getName());
         System.out.println();
         System.out.println(
                 annotations.entrySet().stream().map(e -> e.getKey() + " : " + e.getValue().toString()).collect(Collectors.joining("\n"))
         );
 
-       // System.out.println("Class level @LRA: " + deepScanClassLevelLraAnnotation(clazz));
+        // System.out.println("Class level @LRA: " + deepScanClassLevelLraAnnotation(clazz));
     }
-
 
 
     //@LRA(cancelOn = Response.Status.ACCEPTED)

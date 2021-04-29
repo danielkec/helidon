@@ -17,11 +17,9 @@
 package io.helidon.microprofile.lra.tck;
 
 import java.net.URI;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.logging.Logger;
 
+import javax.ws.rs.client.Client;
 import javax.ws.rs.client.ClientBuilder;
 import javax.ws.rs.core.Response;
 
@@ -41,31 +39,32 @@ public class HelidonLRARecoveryService implements LRARecoveryService {
         int counter = 0;
 
         do {
-            if (counter > 7) return;
+            if (counter > 9) return;
             LOGGER.info("Recovery attempt #" + ++counter);
         } while (!waitForEndPhaseReplay(lraId));
-        LOGGER.info("LRA " + lraId + "has finished the recovery");
+        LOGGER.info("LRA " + lraId + " has finished the recovery");
+
     }
 
     @Override
     public boolean waitForEndPhaseReplay(URI lraId) {
+        Client client = ClientBuilder.newClient();
         try {
-            Response response = ClientBuilder.newClient()
+
+            Response response = client
                     .target("http://localhost:8070/lra-coordinator")
                     .path("recovery")
                     .request()
-                    .async()
-                    .get()
-                    .get(2, TimeUnit.SECONDS);
+                    .get();
 
             String recoveringLras = response.readEntity(String.class);
+            response.close();
             if (recoveringLras.contains(lraId.toASCIIString())) {
                 // intended LRA is among those still waiting for recovering
                 return false;
             }
-        } catch (TimeoutException | InterruptedException | ExecutionException e) {
-            // timeout can be expected, lets try again
-            return false;
+        } finally {
+            client.close();
         }
         return true;
     }

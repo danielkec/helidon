@@ -5,14 +5,16 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
  */
+
 package io.helidon.microprofile.lra;
 
 import java.net.URI;
@@ -29,6 +31,7 @@ import java.util.concurrent.TimeoutException;
 
 import javax.inject.Inject;
 import javax.ws.rs.NotFoundException;
+import javax.ws.rs.client.Client;
 import javax.ws.rs.client.ClientBuilder;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.client.WebTarget;
@@ -40,6 +43,15 @@ import io.helidon.common.reactive.Single;
 import io.helidon.microprofile.config.ConfigCdiExtension;
 import io.helidon.microprofile.lra.coordinator.Coordinator;
 import io.helidon.microprofile.lra.coordinator.CoordinatorApplication;
+import io.helidon.microprofile.lra.resources.CdiCompleteOrCompensate;
+import io.helidon.microprofile.lra.resources.DontEnd;
+import io.helidon.microprofile.lra.resources.JaxrsCompleteOrCompensate;
+import io.helidon.microprofile.lra.resources.Recovery;
+import io.helidon.microprofile.lra.resources.RecoveryStatus;
+import io.helidon.microprofile.lra.resources.StartAndAfter;
+import io.helidon.microprofile.lra.resources.TestApplication;
+import io.helidon.microprofile.lra.resources.Timeout;
+import io.helidon.microprofile.lra.resources.Work;
 import io.helidon.microprofile.scheduling.SchedulingCdiExtension;
 import io.helidon.microprofile.server.JaxRsCdiExtension;
 import io.helidon.microprofile.server.RoutingName;
@@ -54,6 +66,7 @@ import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import org.eclipse.microprofile.lra.annotation.LRAStatus;
 import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
@@ -61,6 +74,7 @@ import org.glassfish.jersey.ext.cdi1x.internal.CdiComponentProvider;
 import org.hamcrest.core.AnyOf;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 @HelidonTest
@@ -78,13 +92,13 @@ import org.junit.jupiter.api.Test;
 @AddBean(ParticipantApp.class)
 // Test resources
 @AddBean(TestApplication.class)
-@AddBean(TestApplication.StartAndClose.class)
-@AddBean(TestApplication.StartAndCloseCdi.class)
-@AddBean(TestApplication.StartAndAfter.class)
-@AddBean(TestApplication.DontEnd.class)
-@AddBean(TestApplication.Timeout.class)
-@AddBean(TestApplication.Recovery.class)
-@AddBean(TestApplication.RecoveryStatus.class)
+@AddBean(JaxrsCompleteOrCompensate.class)
+@AddBean(CdiCompleteOrCompensate.class)
+@AddBean(StartAndAfter.class)
+@AddBean(DontEnd.class)
+@AddBean(Timeout.class)
+@AddBean(Recovery.class)
+@AddBean(RecoveryStatus.class)
 // Mock coordinator
 @AddBean(Coordinator.class)
 @AddBean(CoordinatorApplication.class)
@@ -126,33 +140,74 @@ public class BasicTest {
         executor = ScheduledThreadPoolSupplier.create().get();
     }
 
+    @BeforeEach
+    void setUp() {
+        completionMap.clear();
+    }
+
     @AfterAll
     static void afterAll() {
         executor.shutdownNow();
     }
 
     @Test
-    void testInMethod(WebTarget target) throws Exception {
-        Response response = target.path("start-and-close")
-                .path("start")
+    void jaxrsComplete(WebTarget target) throws Exception {
+        Response response = target.path(JaxrsCompleteOrCompensate.PATH_BASE)
+                .path(JaxrsCompleteOrCompensate.PATH_START_LRA)
                 .request()
+                .header(Work.HEADER_KEY, Work.NOOP)
                 .async()
                 .put(Entity.text(""))
                 .get(10, TimeUnit.SECONDS);
         assertThat(response.getStatus(), AnyOf.anyOf(is(200), is(204)));
-        await("start-and-close");
+        URI lraId = await(JaxrsCompleteOrCompensate.CS_START_LRA);
+        assertThat(await(JaxrsCompleteOrCompensate.CS_COMPLETE), is(lraId));
+        assertFalse(getCompletable(JaxrsCompleteOrCompensate.CS_COMPENSATE).isDone());
+    }
+
+    @Test
+    void jaxrsCompensate(WebTarget target) throws Exception {
+        Response response = target.path(JaxrsCompleteOrCompensate.PATH_BASE)
+                .path(JaxrsCompleteOrCompensate.PATH_START_LRA)
+                .request()
+                .header(Work.HEADER_KEY, Work.BOOM)
+                .async()
+                .put(Entity.text(""))
+                .get(10, TimeUnit.SECONDS);
+        assertThat(response.getStatus(), is(500));
+        URI lraId = await(JaxrsCompleteOrCompensate.CS_START_LRA);
+        assertThat(await(JaxrsCompleteOrCompensate.CS_COMPENSATE), is(lraId));
+        assertFalse(getCompletable(JaxrsCompleteOrCompensate.CS_COMPLETE).isDone());
     }
 
     @Test
     void cdiComplete(WebTarget target) throws Exception {
-        Response response = target.path("start-and-close-cdi")
-                .path("start")
+        Response response = target.path(CdiCompleteOrCompensate.PATH_BASE)
+                .path(CdiCompleteOrCompensate.PATH_START_LRA)
                 .request()
+                .header(Work.HEADER_KEY, Work.NOOP)
                 .async()
                 .put(Entity.text(""))
                 .get(10, TimeUnit.SECONDS);
         assertThat(response.getStatus(), AnyOf.anyOf(is(200), is(204)));
-        await("start-and-close-cdi");
+        URI lraId = await(CdiCompleteOrCompensate.CS_START_LRA);
+        assertThat(await(CdiCompleteOrCompensate.CS_COMPLETE), is(lraId));
+        assertFalse(getCompletable(CdiCompleteOrCompensate.CS_COMPENSATE).isDone());
+    }
+
+    @Test
+    void cdiCompensate(WebTarget target) throws Exception {
+        Response response = target.path(CdiCompleteOrCompensate.PATH_BASE)
+                .path(CdiCompleteOrCompensate.PATH_START_LRA)
+                .request()
+                .header(Work.HEADER_KEY, Work.BOOM)
+                .async()
+                .put(Entity.text(""))
+                .get(10, TimeUnit.SECONDS);
+        assertThat(response.getStatus(), is(500));
+        URI lraId = await(CdiCompleteOrCompensate.CS_START_LRA);
+        assertThat(await(CdiCompleteOrCompensate.CS_COMPENSATE), is(lraId));
+        assertFalse(getCompletable(CdiCompleteOrCompensate.CS_COMPLETE).isDone());
     }
 
     @Test
@@ -245,26 +300,26 @@ public class BasicTest {
     @Test
     void statusRecoveryTest(WebTarget target) throws ExecutionException, InterruptedException, TimeoutException {
 
-        Response response = target.path(TestApplication.RecoveryStatus.PATH_BASE)
-                .path(TestApplication.RecoveryStatus.PATH_START_LRA)
+        Response response = target.path(RecoveryStatus.PATH_BASE)
+                .path(RecoveryStatus.PATH_START_LRA)
                 .request()
                 .async()
-                .put(Entity.text(ParticipantStatus.Compensating.name()))// report from @Status method
+                .put(Entity.text(ParticipantStatus.Active.name()))// report from @Status method
                 .get(5, TimeUnit.SECONDS);
 
         assertThat(response.getStatus(), is(500));
         URI lraId = UriBuilder.fromPath(response.getHeaderString(LRA_HTTP_CONTEXT_HEADER)).build();
-        assertThat(await(TestApplication.RecoveryStatus.CS_START_LRA, lraId), is(lraId));
+        assertThat(await(RecoveryStatus.CS_START_LRA, lraId), is(lraId));
         waitForRecovery(lraId);
-        assertThat(await(TestApplication.RecoveryStatus.CS_STATUS, lraId), is(lraId));
-        assertThat(await(TestApplication.RecoveryStatus.CS_COMPENSATE_SECOND, lraId), is(lraId));
+        assertThat(await(RecoveryStatus.CS_STATUS, lraId), is(lraId));
+        assertThat(await(RecoveryStatus.CS_COMPENSATE_SECOND, lraId), is(lraId));
     }
 
     @Test
     void statusNonRecoveryTest(WebTarget target) throws ExecutionException, InterruptedException, TimeoutException {
 
-        Response response = target.path(TestApplication.RecoveryStatus.PATH_BASE)
-                .path(TestApplication.RecoveryStatus.PATH_START_LRA)
+        Response response = target.path(RecoveryStatus.PATH_BASE)
+                .path(RecoveryStatus.PATH_START_LRA)
                 .request()
                 .async()
                 .put(Entity.text(ParticipantStatus.Compensated.name()))// report from @Status method
@@ -272,13 +327,13 @@ public class BasicTest {
 
         assertThat(response.getStatus(), is(500));
         URI lraId = UriBuilder.fromPath(response.getHeaderString(LRA_HTTP_CONTEXT_HEADER)).build();
-        assertThat(await(TestApplication.RecoveryStatus.CS_START_LRA, lraId), is(lraId));
+        assertThat(await(RecoveryStatus.CS_START_LRA, lraId), is(lraId));
         waitForRecovery(UriBuilder.fromPath("fake_non_existent").build());// just wait for any recovery
         waitForRecovery(UriBuilder.fromPath("fake_non_existent").build());// just wait for any recovery
-        assertThat("@Status method should have been called by compensator", 
-                await(TestApplication.RecoveryStatus.CS_STATUS, lraId), is(lraId));
+        assertThat("@Status method should have been called by compensator",
+                await(RecoveryStatus.CS_STATUS, lraId), is(lraId));
         assertThat("Second compensation shouldn't come, we reported Completed with @Status method",
-                getCompletable(TestApplication.RecoveryStatus.CS_COMPENSATE_SECOND, lraId).isDone(), is(not(true)));
+                getCompletable(RecoveryStatus.CS_COMPENSATE_SECOND, lraId).isDone(), is(not(true)));
     }
 
     private void assertClosedOrNotFound(URI lraId) {
@@ -291,24 +346,24 @@ public class BasicTest {
 
     private void waitForRecovery(URI lraId) {
         for (int i = 0; i < 10; i++) {
+            Client client = ClientBuilder.newClient();
             try {
-                Response response = ClientBuilder.newClient()
+                Response response = client
                         .target("http://localhost:8070/lra-coordinator")
                         .path("recovery")
                         .request()
-                        .async()
-                        .get()
-                        .get(2, TimeUnit.SECONDS);
+                        .get();
 
                 String recoveringLras = response.readEntity(String.class);
-                // response.close();
+                response.close();
                 if (!recoveringLras.contains(lraId.toASCIIString())) {
+                    System.out.println("LRA is no longer among those recovering " + lraId.toASCIIString());
                     // intended LRA is not longer among those recovering
                     break;
                 }
                 System.out.println("Waiting for recovery attempt #" + i + " LRA is still waiting: " + recoveringLras);
-            } catch (TimeoutException | InterruptedException | ExecutionException e) {
-                // timeout can be expected, lets try again
+            } finally {
+                client.close();
             }
         }
     }

@@ -17,6 +17,7 @@ package io.helidon.microprofile.lra;
 
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.logging.Level;
@@ -24,16 +25,21 @@ import java.util.logging.Logger;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.inject.Inject;
+import javax.ws.rs.DELETE;
 import javax.ws.rs.GET;
 import javax.ws.rs.HeaderParam;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
+import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.UriBuilder;
 
 import io.helidon.common.reactive.Single;
 
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
+import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_ENDED_CONTEXT_HEADER;
+import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_PARENT_CONTEXT_HEADER;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVERY_HEADER;
 
 import org.eclipse.microprofile.lra.LRAResponse;
@@ -90,7 +96,7 @@ public class ParticipantResource {
 
     @PUT
     @Path("/afterlra/{fqdn}/{methodName}")
-    public Response after(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
+    public Response after(@HeaderParam(LRA_HTTP_ENDED_CONTEXT_HEADER) URI lraId,
                           @PathParam("fqdn") String fqdn,
                           @PathParam("methodName") String methodName,
                           LRAStatus status) {
@@ -98,17 +104,22 @@ public class ParticipantResource {
             participantService.invoke(fqdn, methodName, lraId, status);
             return Response.ok().build();
         } catch (InvocationTargetException e) {
-            return Response.ok().build();
+            if (e.getTargetException() instanceof WebApplicationException) {
+                return ((WebApplicationException) e.getTargetException()).getResponse();
+            } else {
+                return Response.status(Response.Status.INTERNAL_SERVER_ERROR).build();
+            }
         }
     }
 
     @GET
     @Path("/status/{fqdn}/{methodName}")
-    public CompletionStage<Response> status(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
+    public CompletionStage<Response> status(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) String lraId,
+                                            @HeaderParam(LRA_HTTP_PARENT_CONTEXT_HEADER) String parentId,
                                             @PathParam("fqdn") String fqdn,
                                             @PathParam("methodName") String methodName) {
         try {
-            Object result = participantService.invoke(fqdn, methodName, lraId, null);
+            Object result = participantService.invoke(fqdn, methodName, UriBuilder.fromPath(lraId).build(), null);
             if (result == null) {
                 // If the participant has already responded successfully to an @Compensate or @Complete 
                 // method invocation then it MAY report 410 Gone HTTP status code 
@@ -139,6 +150,26 @@ public class ParticipantResource {
             }
         } catch (InvocationTargetException e) {
             return Single.just(Response.ok().build());
+        }
+    }
+
+    @DELETE
+    @Path("/forget/{fqdn}/{methodName}")
+    public Response forget(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) String lraId,
+                           @HeaderParam(LRA_HTTP_PARENT_CONTEXT_HEADER) String parentId,
+                           @PathParam("fqdn") String fqdn,
+                           @PathParam("methodName") String methodName) {
+        try {
+            URI lraIdUri = UriBuilder.fromPath(lraId).build();
+            URI parentIdUri = Optional.ofNullable(parentId)
+                    .map(UriBuilder::fromPath)
+                    .map(UriBuilder::build)
+                    .orElse(null);
+            participantService.invoke(fqdn, methodName, lraIdUri, parentIdUri);
+            return Response.ok().build();
+        } catch (InvocationTargetException e) {
+            LOGGER.log(Level.WARNING, "Error when invoking cdi @Forget method " + methodName, e);
+            return Response.serverError().entity(e.getTargetException().getMessage()).build();
         }
     }
 

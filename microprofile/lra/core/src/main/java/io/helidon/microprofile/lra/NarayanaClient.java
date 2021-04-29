@@ -70,7 +70,7 @@ public class NarayanaClient implements CoordinatorClient {
                 throw new WebApplicationException("Unexpected response " + response.getStatus() + " from coordinator "
                         + (response.hasEntity() ? response.readEntity(String.class) : ""));
             }
-            return UriBuilder.fromPath(response.getHeaderString(HttpHeaders.LOCATION).replaceFirst(".*/","")).build();
+            return UriBuilder.fromPath(response.getHeaderString(HttpHeaders.LOCATION).replaceFirst(".*/", "")).build();
         } catch (InterruptedException | ExecutionException | TimeoutException e) {
             throw new WebApplicationException("Unable to start LRA", e);
         }
@@ -90,7 +90,7 @@ public class NarayanaClient implements CoordinatorClient {
 
             switch (response.getStatus()) {
                 case 404:
-                    LOGGER.warning("Cancel LRA - Coordinator can't find LRAID: "+ lraId.toASCIIString());
+                    LOGGER.warning("Cancel LRA - Coordinator can't find LRAID: " + lraId.toASCIIString());
                 case 200:
                 case 202:
                     break;
@@ -115,7 +115,7 @@ public class NarayanaClient implements CoordinatorClient {
 
             switch (response.getStatus()) {
                 case 404:
-                    LOGGER.warning("Closing LRA - Coordinator can't find LRAID: "+ lraId.toASCIIString());
+                    LOGGER.warning("Closing LRA - Coordinator can't find LRAID: " + lraId.toASCIIString());
                 case 200:
                 case 202:
                     break;
@@ -132,6 +132,7 @@ public class NarayanaClient implements CoordinatorClient {
                     Participant participant) throws WebApplicationException {
         try {
             String links = participant.compensatorLinks();
+            LOGGER.log(Level.INFO, "JOIN LINKS: " + links);
             Response response = ClientBuilder.newClient()
                     .target(coordinatorUrl)
                     .path(lraId.toASCIIString())
@@ -184,7 +185,7 @@ public class NarayanaClient implements CoordinatorClient {
 
             switch (response.getStatus()) {
                 case 404:
-                    LOGGER.warning("Leaving LRA - Coordinator can't find LRAID: "+ lraId.toASCIIString());
+                    LOGGER.warning("Leaving LRA - Coordinator can't find LRAID: " + lraId.toASCIIString());
                 case 200:
                     return;
                 default:
@@ -211,7 +212,7 @@ public class NarayanaClient implements CoordinatorClient {
 
             switch (response.getStatus()) {
                 case 404:
-                    LOGGER.warning("Status LRA - Coordinator can't find LRAID: "+ lraId.toASCIIString());
+                    LOGGER.warning("Status LRA - Coordinator can't find LRAID: " + lraId.toASCIIString());
                     return LRAStatus.Closed;
                 case 200:
                 case 202:

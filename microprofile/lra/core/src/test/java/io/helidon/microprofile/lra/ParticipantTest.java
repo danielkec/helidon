@@ -23,13 +23,15 @@ import org.junit.jupiter.api.Test;
 
 import java.net.URI;
 
+import io.helidon.microprofile.lra.resources.DontEnd;
+
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ParticipantTest {
     @Test
     void methodScan() throws NoSuchMethodException {
-        Participant p = new Participant(UriBuilder.fromPath("http://localhost:8888").build(), TestApplication.DontEnd.class);
-        assertTrue(p.isLraMethod(TestApplication.DontEnd.class.getMethod("startDontEndLRA", URI.class)));
-        assertTrue(p.isLraMethod(TestApplication.DontEnd.class.getMethod("endLRA", URI.class)));
+        Participant p = new Participant(UriBuilder.fromPath("http://localhost:8888").build(), DontEnd.class);
+        assertTrue(p.isLraMethod(DontEnd.class.getMethod("startDontEndLRA", URI.class)));
+        assertTrue(p.isLraMethod(DontEnd.class.getMethod("endLRA", URI.class)));
     }
 }

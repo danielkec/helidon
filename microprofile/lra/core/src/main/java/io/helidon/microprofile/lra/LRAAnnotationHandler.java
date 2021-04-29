@@ -125,6 +125,7 @@ class LRAAnnotationHandler implements AnnotationHandler {
         if (lraId != null) {
             reqCtx.getHeaders().putSingle(LRA_HTTP_CONTEXT_HEADER, lraId.toASCIIString());
             LRAThreadContext.get().lra(lraId);
+            reqCtx.setProperty(LRA_HTTP_CONTEXT_HEADER, lraId);
         }
     }
 
@@ -132,7 +133,7 @@ class LRAAnnotationHandler implements AnnotationHandler {
     public void handleJaxrsAfter(ContainerRequestContext requestContext,
                                  ContainerResponseContext responseContext,
                                  ResourceInfo resourceInfo) {
-        Optional<URI> lraId = Optional.ofNullable((URI) requestContext.getProperty("lra.id"))
+        Optional<URI> lraId = Optional.ofNullable((URI) requestContext.getProperty(LRA_HTTP_CONTEXT_HEADER))
                 .or(() -> LRAThreadContext.get().lra());
 
         var end = annotation.end();

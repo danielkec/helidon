@@ -26,11 +26,13 @@
     </parent>
 
     <groupId>io.helidon.microprofile.lra</groupId>
-    <artifactId>helidon-microprofile-lra-client</artifactId>
-    <name>Helidon MicroProfile Long Running Actions Parent</name>
+    <artifactId>helidon-microprofile-lra-client-parent</artifactId>
+    <name>Helidon MicroProfile LRA Client Parent</name>
     <packaging>pom</packaging>
 
     <modules>
-        <module>narayana</module>
+        <module>spi</module>
+        <module>core</module>
+        <module>narayana-adapter</module>
     </modules>
 </project>

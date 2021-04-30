@@ -36,24 +36,27 @@ import org.jboss.shrinkwrap.api.spec.JavaArchive;
 public class CoordinatorDeployer {
 
     static final boolean USE_MOCK_COODINATOR;
-    
+
     static {
         boolean mockAvailable = false;
-        try{
+        try {
             Class.forName("io.helidon.microprofile.lra.coordinator.Coordinator");
             mockAvailable = true;
-        }catch (ClassNotFoundException e){
+        } catch (ClassNotFoundException e) {
             // Mock coordinator not on the classpath
         }
         USE_MOCK_COODINATOR = mockAvailable;
     }
 
     public void beforeStart(@Observes BeforeStart event, Container container) throws Exception {
-        if (!USE_MOCK_COODINATOR) return;
-        
-        Files.deleteIfExists(Paths.get("target/mock-coordinator/lra-registry"));
         HelidonDeployableContainer helidonContainer = (HelidonDeployableContainer) container.getDeployableContainer();
         HelidonContainerConfiguration containerConfig = helidonContainer.getContainerConfig();
+
+        containerConfig.set("mp.lra.coordinator.url", "http://localhost:8070/lra-coordinator");
+
+        if (!USE_MOCK_COODINATOR) return;
+
+        Files.deleteIfExists(Paths.get("target/mock-coordinator/lra-registry"));
 
         containerConfig.set("lra.tck.coordinator.persist", "true");
         containerConfig.set("server.sockets.0.name", "coordinator");

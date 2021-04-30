@@ -25,13 +25,15 @@
         </dependency>
         <dependency>
             <groupId>io.helidon.microprofile.lra</groupId>
-            <artifactId>helidon-microprofile-lra</artifactId>
-            <version>2.3.0-SNAPSHOT</version>
+            <artifactId>helidon-microprofile-lra-client</artifactId>
+            <version>${project.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>io.helidon.microprofile.scheduling</groupId>
-            <artifactId>helidon-microprofile-scheduling</artifactId>
+            <groupId>io.helidon.microprofile.lra</groupId>
+            <artifactId>helidon-microprofile-lra-client-narayana-adapter</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.eclipse.microprofile.lra</groupId>
@@ -61,7 +63,8 @@
                 <dependency>
                     <groupId>io.helidon.microprofile.lra</groupId>
                     <artifactId>helidon-microprofile-lra-coordinator</artifactId>
-                    <version>2.3.0-SNAPSHOT</version>
+                    <version>${project.version}</version>
+                    <scope>test</scope>
                 </dependency>
             </dependencies>
         </profile>

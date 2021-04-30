@@ -92,10 +92,10 @@ import org.junit.jupiter.api.Test;
 @AddBean(InspectionService.class)
 @AddBean(ParticipantService.class)
 @AddBean(ParticipantApp.class)
+@AddConfig(key = "mp.lra.coordinator.url", value = "http://localhost:8070/lra-coordinator")
 // Coordinator flavor
 @AddBean(NarayanaClient.class)
 @AddBean(NarayanaResourceAdapter.class)
-@AddConfig(key = "mp.lra.coordinator.url", value = "http://localhost:8070/lra-coordinator")
 // Test resources
 @AddBean(TestApplication.class)
 @AddBean(JaxrsCompleteOrCompensate.class)
@@ -106,6 +106,7 @@ import org.junit.jupiter.api.Test;
 @AddBean(Recovery.class)
 @AddBean(RecoveryStatus.class)
 // Mock coordinator
+// comment out below annotations to use external coordinator
 @AddBean(Coordinator.class)
 @AddBean(CoordinatorApplication.class)
 @AddExtension(SchedulingCdiExtension.class)

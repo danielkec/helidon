@@ -17,6 +17,12 @@
 
 package io.helidon.microprofile.lra.coordinator.client;
 
+import java.util.List;
+import java.util.Optional;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.regex.Matcher;
+
 import javax.enterprise.context.ApplicationScoped;
 import javax.ws.rs.container.ContainerRequestContext;
 import javax.ws.rs.container.ContainerResponseContext;
@@ -28,9 +34,13 @@ import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVER
 
 @ApplicationScoped
 public class NarayanaResourceAdapter implements CoordinatorResourceAdapter {
+
+    private static final Logger LOGGER = Logger.getLogger(NarayanaResourceAdapter.class.getName());
+
     @Override
     public void handleJaxrsBefore(final ContainerRequestContext requestContext, final ResourceInfo resourceInfo) {
         // Narayana sends coordinator url as part of lraId with LRA_HTTP_ENDED_CONTEXT_HEADER
+        // and parentLRA in lra header .../0_ffff7f000001_a76d_608fb07d_183a?ParentLRA=http%3A%2F%2...
         cleanupLraId(LRA_HTTP_CONTEXT_HEADER, requestContext);
         cleanupLraId(LRA_HTTP_ENDED_CONTEXT_HEADER, requestContext);
         cleanupLraId(LRA_HTTP_RECOVERY_HEADER, requestContext);
@@ -44,9 +54,24 @@ public class NarayanaResourceAdapter implements CoordinatorResourceAdapter {
     }
 
     private static void cleanupLraId(String headerKey, ContainerRequestContext reqCtx) {
-        String endedLraId = reqCtx.getHeaders().getFirst(headerKey);
-        if (endedLraId != null && endedLraId.contains("/lra-coordinator/")) {
-            reqCtx.getHeaders().putSingle(headerKey, endedLraId.split("/lra-coordinator/")[1]);
+        List<String> headers = Optional.ofNullable(reqCtx.getHeaders().get(headerKey)).orElse(List.of());
+        if(headers.isEmpty()){
+            return;
+        }
+        if (headers.size() > 1) {
+            LOGGER.log(Level.SEVERE, "Ambiguous LRA header {0}}: {1}", new Object[] {
+                    headerKey, String.join(", ", reqCtx.getHeaders().get(headerKey))
+            });
+        }
+        String lraId = headers.get(0);
+        if (lraId != null && lraId.contains("/lra-coordinator/")) {
+
+            Matcher m = NarayanaLRAId.LRA_ID_PATTERN.matcher(lraId);
+            if (!m.matches()) {
+                //Unexpected header format from Narayana
+                throw new RuntimeException("Error when parsing Narayana header " + headerKey + ": " + lraId);
+            }
+            reqCtx.getHeaders().putSingle(headerKey, m.group(1));
         }
     }
 }

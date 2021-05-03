@@ -48,7 +48,7 @@ class LeaveAnnotationHandler implements AnnotationHandler {
             var participant = participantService.participant(baseUri, resourceInfo.getResourceClass());
             coordinatorClient.leave(lraId, participant);
             requestContext.getHeaders().add(LRA_HTTP_CONTEXT_HEADER, lraId.toASCIIString());
-            requestContext.setProperty("lra.id", lraId);
+            requestContext.setProperty(LRA_HTTP_CONTEXT_HEADER, lraId);
         }
 
     }

@@ -39,7 +39,7 @@ class NoAnnotationHandler implements AnnotationHandler {
 
         if (existingLraId.isPresent()) {
             // Propagate thread bound lraId for after handler
-            existingLraId.ifPresent(uri -> requestContext.setProperty("lra.id", existingLraId.get().toASCIIString()));
+            existingLraId.ifPresent(uri -> requestContext.setProperty(LRA_HTTP_CONTEXT_HEADER, existingLraId.get().toASCIIString()));
         } else if (lraFromHeader != null) {
             // Save lraId from header to thread local for possible clients
             LRAThreadContext.get().lra(UriBuilder.fromPath(lraFromHeader).build());

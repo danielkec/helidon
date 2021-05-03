@@ -79,7 +79,7 @@ public class NarayanaClient implements CoordinatorClient {
                 throw new WebApplicationException("Unexpected response " + response.getStatus() + " from coordinator "
                         + (response.hasEntity() ? response.readEntity(String.class) : ""));
             }
-            return UriBuilder.fromPath(response.getHeaderString(HttpHeaders.LOCATION).replaceFirst(".*/", "")).build();
+            return NarayanaLRAId.parseLRAId(response.getHeaderString(HttpHeaders.LOCATION));
         } catch (InterruptedException | ExecutionException | TimeoutException e) {
             throw new WebApplicationException("Unable to start LRA", e);
         }
@@ -190,6 +190,7 @@ public class NarayanaClient implements CoordinatorClient {
                 case 404:
                     LOGGER.warning("Leaving LRA - Coordinator can't find LRAID: " + lraId.toASCIIString());
                 case 200:
+                    LOGGER.log(Level.INFO, "Left LRA - " + lraId.toASCIIString());
                     return;
                 default:
                     throw new IllegalStateException("Unexpected coordinator response " + response.getStatus());

@@ -17,9 +17,11 @@ package io.helidon.microprofile.lra;
 
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -45,6 +47,7 @@ import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVER
 import org.eclipse.microprofile.lra.LRAResponse;
 import org.eclipse.microprofile.lra.annotation.LRAStatus;
 import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
+import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
 
 @ApplicationScoped
 @Path("lra-client-cdi-methods")
@@ -53,6 +56,16 @@ public class ParticipantResource {
 
     private static final Logger LOGGER = Logger.getLogger(ParticipantResource.class.getName());
 
+    private static final Map<ParticipantStatus, Supplier<Response>> PARTICIPANT_RESPONSE_BUILDERS = 
+            Map.of(
+                    ParticipantStatus.Compensating, () -> LRAResponse.compensating(ParticipantStatus.Compensating), 
+                    ParticipantStatus.Compensated, () -> LRAResponse.compensated(ParticipantStatus.Compensated),
+                    ParticipantStatus.FailedToCompensate, () -> LRAResponse.failedToCompensate(ParticipantStatus.FailedToCompensate),
+                    ParticipantStatus.Completing, () -> LRAResponse.compensating(ParticipantStatus.Completing),
+                    ParticipantStatus.Completed, () -> LRAResponse.compensating(ParticipantStatus.Completed),
+                    ParticipantStatus.FailedToComplete, () -> LRAResponse.failedToComplete(ParticipantStatus.FailedToComplete)
+            );
+    
     @Inject
     private ParticipantService participantService;
 
@@ -67,7 +80,7 @@ public class ParticipantResource {
             if (result instanceof Response) {
                 return (Response) result;
             } else if (result instanceof ParticipantStatus) {
-                return Response.ok(((ParticipantStatus) result).name()).build();
+                return PARTICIPANT_RESPONSE_BUILDERS.get(((ParticipantStatus) result)).get();
             } else {
                 return Response.ok(result).build();
             }

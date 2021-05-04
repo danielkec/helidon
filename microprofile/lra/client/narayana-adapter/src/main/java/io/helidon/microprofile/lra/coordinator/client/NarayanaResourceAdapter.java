@@ -30,6 +30,7 @@ import javax.ws.rs.container.ResourceInfo;
 
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_ENDED_CONTEXT_HEADER;
+import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_PARENT_CONTEXT_HEADER;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVERY_HEADER;
 
 @ApplicationScoped
@@ -44,6 +45,7 @@ public class NarayanaResourceAdapter implements CoordinatorResourceAdapter {
         cleanupLraId(LRA_HTTP_CONTEXT_HEADER, requestContext);
         cleanupLraId(LRA_HTTP_ENDED_CONTEXT_HEADER, requestContext);
         cleanupLraId(LRA_HTTP_RECOVERY_HEADER, requestContext);
+        cleanupLraId(LRA_HTTP_PARENT_CONTEXT_HEADER, requestContext);
     }
 
     @Override

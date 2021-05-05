@@ -55,7 +55,14 @@ interface AnnotationHandler {
         if (lraAnnotations.isEmpty()) {
             return List.of(new NoAnnotationHandler());
         }
-        //TODO: Rework to prioritize annotations
+
+        //TODO: Rework priority of annotations
+        if(lraAnnotations.stream()
+                .map(a -> a.name().toString())
+                .anyMatch(Leave.class.getName()::equals)){
+            return List.of(new LeaveAnnotationHandler(coordinatorClient, participantService));
+        }
+        
         if (lraAnnotations.stream()
                 .map(a -> a.name().toString())
                 .anyMatch(STAND_ALONE_ANNOTATIONS::contains)) {

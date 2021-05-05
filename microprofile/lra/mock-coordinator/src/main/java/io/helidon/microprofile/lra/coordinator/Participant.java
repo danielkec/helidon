@@ -43,12 +43,20 @@ import javax.xml.bind.annotation.XmlRootElement;
 import javax.xml.bind.annotation.XmlTransient;
 import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 
+import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.Active;
+import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.Compensated;
+import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.Compensating;
+import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.Completed;
+import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.Completing;
+import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.FailedToCompensate;
+import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.FailedToComplete;
+import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.valueOf;
+import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
+import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_ENDED_CONTEXT_HEADER;
+import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVERY_HEADER;
+
 import org.eclipse.microprofile.lra.annotation.LRAStatus;
 import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
-
-import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.*;
-import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.Compensated;
-import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.Completed;
 
 @XmlRootElement
 @XmlAccessorType(XmlAccessType.FIELD)
@@ -301,7 +309,7 @@ public class Participant {
                 status.set(Status.FAILED_TO_COMPLETE);
                 return true;
             }
-            
+
             Response response = client.target(endpointURI.get())
                     .request()
                     .headers(lra.headers())
@@ -370,7 +378,10 @@ public class Participant {
             try {
                 Response response = client.target(statusURI.get())
                         .request()
-                        .headers(lra.headers())
+                        // Dont send parent!
+                        .header(LRA_HTTP_CONTEXT_HEADER, lra.lraId)
+                        .header(LRA_HTTP_RECOVERY_HEADER, lra.lraId)
+                        .header(LRA_HTTP_ENDED_CONTEXT_HEADER, lra.lraId)
                         .buildGet().invoke();
                 int responseStatus = response.getStatus();
                 if (responseStatus == 503 || responseStatus == 202) { //todo include other retriables

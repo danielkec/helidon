@@ -20,6 +20,7 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
@@ -66,7 +67,6 @@ public class LRA {
     boolean isParent;
     boolean isChild;
     boolean isNestedThatShouldBeForgottenAfterParentEnds = false;
-    private boolean isProcessing;
     private long whenReadyToDelete = 0;
 
     public LRA(String lraUUID) {
@@ -136,7 +136,9 @@ public class LRA {
         MultivaluedMap<String, Object> multivaluedMap = new MultivaluedHashMap<>(4);
         multivaluedMap.add(LRA_HTTP_CONTEXT_HEADER, lraId);
         multivaluedMap.add(LRA_HTTP_ENDED_CONTEXT_HEADER, lraId);
-        multivaluedMap.add(LRA_HTTP_PARENT_CONTEXT_HEADER, parentId);
+        Optional.ofNullable(parentId)
+                .map(URI::toASCIIString)
+                .ifPresent(s -> multivaluedMap.add(LRA_HTTP_PARENT_CONTEXT_HEADER, s));
         multivaluedMap.add(LRA_HTTP_RECOVERY_HEADER, lraId);
         return multivaluedMap;
     }
@@ -234,7 +236,7 @@ public class LRA {
         }
         return allSent;
     }
-    
+
     boolean sendForget() { //todo could gate with isprocessing here as well
         boolean areAllThatNeedToBeForgotten = true;
         for (Participant participant : participants) {
@@ -247,7 +249,7 @@ public class LRA {
     public boolean isReadyToDelete() {
         return whenReadyToDelete != 0 && whenReadyToDelete < System.currentTimeMillis();
     }
-    
+
 
     public boolean areAllAfterLRASuccessfullyCalledOrForgotten() {
         for (Participant participant : participants) {

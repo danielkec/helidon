@@ -35,7 +35,8 @@ public class TestApplication extends Application {
                 DontEnd.class,
                 Timeout.class,
                 Recovery.class,
-                RecoveryStatus.class
+                RecoveryStatus.class,
+                NestedCompleteOrCompensate.class
         );
     }
 

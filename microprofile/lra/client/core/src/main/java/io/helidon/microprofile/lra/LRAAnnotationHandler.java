@@ -62,14 +62,14 @@ class LRAAnnotationHandler implements AnnotationHandler {
         var participant = participantService.participant(baseUri, resourceInfo.getResourceClass());
         var existingLraId = LRAThreadContext.get().lra();
         var timeLimit = Duration.of(annotation.timeLimit(), annotation.timeUnit()).toMillis();
-        var end = annotation.end();
 
         URI lraId = null;
+        URI parentLraId = null;
         switch (annotation.value()) {
             case NESTED:
                 if (existingLraId.isPresent()) {
+                    parentLraId = existingLraId.get();
                     reqCtx.getHeaders().putSingle(LRA_HTTP_PARENT_CONTEXT_HEADER, existingLraId.get().toASCIIString());
-                    reqCtx.setProperty(PROP_KEY_SUPPRESSED_LRA, existingLraId.get());
                     lraId = coordinatorClient.start(existingLraId.get(), method.getDeclaringClass().getName() + "#" + method.getName(), timeLimit);
                     URI recoveryUri = coordinatorClient.join(lraId, timeLimit, participant);
                     reqCtx.getHeaders().add(LRA_HTTP_RECOVERY_HEADER, recoveryUri.toASCIIString());
@@ -128,6 +128,10 @@ class LRAAnnotationHandler implements AnnotationHandler {
             reqCtx.getHeaders().putSingle(LRA_HTTP_CONTEXT_HEADER, lraId.toASCIIString());
             LRAThreadContext.get().lra(lraId);
             reqCtx.setProperty(LRA_HTTP_CONTEXT_HEADER, lraId);
+        }  
+        if (parentLraId != null) {
+            reqCtx.getHeaders().putSingle(LRA_HTTP_PARENT_CONTEXT_HEADER, parentLraId.toASCIIString());
+            reqCtx.setProperty(LRA_HTTP_PARENT_CONTEXT_HEADER, parentLraId);
         }
     }
 
@@ -151,7 +155,7 @@ class LRAAnnotationHandler implements AnnotationHandler {
             coordinatorClient.close(lraId.get());
             LRAThreadContext.clear();
         }
-        URI suppressedLra = (URI) requestContext.getProperty(PROP_KEY_SUPPRESSED_LRA);
+        URI suppressedLra = (URI) requestContext.getProperty(LRA_HTTP_PARENT_CONTEXT_HEADER);
         if (suppressedLra != null) {
             responseContext.getHeaders().putSingle(LRA_HTTP_CONTEXT_HEADER, suppressedLra.toASCIIString());
         }

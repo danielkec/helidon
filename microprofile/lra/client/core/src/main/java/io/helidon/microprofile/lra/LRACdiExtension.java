@@ -100,7 +100,7 @@ public class LRACdiExtension implements Extension {
                 Complete.class,
                 Forget.class,
                 Status.class,
-                ParticipantResource.class).forEach(c -> runtimeIndex(DotName.createSimple(c.getName())));
+                ParticipantCdiResource.class).forEach(c -> runtimeIndex(DotName.createSimple(c.getName())));
 
         List<URL> indexFiles;
         try {

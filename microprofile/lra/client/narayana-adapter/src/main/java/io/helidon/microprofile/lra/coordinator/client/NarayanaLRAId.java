@@ -31,9 +31,9 @@ class NarayanaLRAId {
      * Narayana sends coordinator url as part of lraId and sometimes even parentLRA as query param:
      * http://127.0.0.1:8070/lra-coordinator/0_ffff7f000001_a76d_608fb07d_183a?ParentLRA=http%3A%2F%2...
      * <p>
-     * Helidon client impl works with clean lraId, no unnecessary magic.
+     * Helidon client impl works with clean lraId, no unnecessary magic is needed.
      *
-     * @param narayanaLRAId
+     * @param narayanaLRAId narayana lraId with uid hidden inside
      * @return uid of LRA
      */
     static URI parseLRAId(String narayanaLRAId) {

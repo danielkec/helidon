@@ -17,8 +17,6 @@
 
 package io.helidon.microprofile.lra.resources;
 
-import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
-
 import java.net.URI;
 
 import javax.enterprise.context.ApplicationScoped;
@@ -32,26 +30,34 @@ import io.helidon.microprofile.lra.BasicTest;
 
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
 
+import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
+
 @ApplicationScoped
-@Path("/dont-end")
+@Path(DontEnd.PATH_BASE)
 public class DontEnd extends CommonAfter {
+
+    public static final String PATH_BASE = "dont-end";
+    public static final String PATH_START_LRA = "start";
+    public static final String PATH_START_SECOND_LRA = "start-second";
+    public static final String CS_START_LRA = PATH_BASE + PATH_START_LRA;
+    public static final String CS_START_SECOND_LRA = PATH_BASE + PATH_START_LRA;
 
     @Inject
     BasicTest basicTest;
 
     @PUT
-    @Path("first-not-ending")
+    @Path(PATH_START_LRA)
     @LRA(value = LRA.Type.REQUIRES_NEW, end = false)
     public Response startDontEndLRA(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId) {
-        basicTest.getCompletable("first-not-ending").complete(lraId);
+        basicTest.getCompletable(CS_START_LRA).complete(lraId);
         return Response.ok().build();
     }
 
     @PUT
-    @Path("second-ending")
+    @Path(PATH_START_SECOND_LRA)
     @LRA(value = LRA.Type.MANDATORY, end = true)
     public Response endLRA(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId) {
-        basicTest.getCompletable("second-ending").complete(lraId);
+        basicTest.getCompletable(CS_START_SECOND_LRA).complete(lraId);
         return Response.ok().build();
     }
 

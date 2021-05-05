@@ -18,6 +18,7 @@
 package io.helidon.microprofile.lra;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.logging.Logger;
@@ -27,24 +28,26 @@ import javax.ws.rs.container.ContainerResponseContext;
 import javax.ws.rs.container.ResourceInfo;
 import javax.ws.rs.core.Response;
 
+import io.helidon.microprofile.lra.coordinator.client.CoordinatorClient;
+
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_PARENT_CONTEXT_HEADER;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVERY_HEADER;
 
 import org.jboss.jandex.AnnotationInstance;
 
-import io.helidon.microprofile.lra.coordinator.client.CoordinatorClient;
-
 class LRAAnnotationHandler implements AnnotationHandler {
 
     private static final Logger LOGGER = Logger.getLogger(LRAAnnotationHandler.class.getName());
 
+    public static final String PROP_KEY_SUPPRESSED_LRA = "suppressed.lra";
+
     private final InspectionService.Lra annotation;
     private final CoordinatorClient coordinatorClient;
-    private ParticipantService participantService;
+    private final ParticipantService participantService;
 
-    LRAAnnotationHandler(AnnotationInstance annotation, 
-                         CoordinatorClient coordinatorClient, 
+    LRAAnnotationHandler(AnnotationInstance annotation,
+                         CoordinatorClient coordinatorClient,
                          InspectionService inspectionService,
                          ParticipantService participantService) {
         this.participantService = participantService;
@@ -58,7 +61,7 @@ class LRAAnnotationHandler implements AnnotationHandler {
         var baseUri = reqCtx.getUriInfo().getBaseUri();
         var participant = participantService.participant(baseUri, resourceInfo.getResourceClass());
         var existingLraId = LRAThreadContext.get().lra();
-        var timeLimit = annotation.timeLimit();
+        var timeLimit = Duration.of(annotation.timeLimit(), annotation.timeUnit()).toMillis();
         var end = annotation.end();
 
         URI lraId = null;
@@ -66,14 +69,12 @@ class LRAAnnotationHandler implements AnnotationHandler {
             case NESTED:
                 if (existingLraId.isPresent()) {
                     reqCtx.getHeaders().putSingle(LRA_HTTP_PARENT_CONTEXT_HEADER, existingLraId.get().toASCIIString());
-                    reqCtx.setProperty("suppressed.lra", existingLraId.get());
+                    reqCtx.setProperty(PROP_KEY_SUPPRESSED_LRA, existingLraId.get());
                     lraId = coordinatorClient.start(existingLraId.get(), method.getDeclaringClass().getName() + "#" + method.getName(), timeLimit);
-                    LOGGER.info("Coordinator confirmed started LRA " + lraId);
                     URI recoveryUri = coordinatorClient.join(lraId, timeLimit, participant);
                     reqCtx.getHeaders().add(LRA_HTTP_RECOVERY_HEADER, recoveryUri.toASCIIString());
                 } else {
                     lraId = coordinatorClient.start(null, method.getDeclaringClass().getName() + "#" + method.getName(), timeLimit);
-                    LOGGER.info("Coordinator confirmed started LRA " + lraId);
                     URI recoveryUri = coordinatorClient.join(lraId, timeLimit, participant);
                     reqCtx.getHeaders().add(LRA_HTTP_RECOVERY_HEADER, recoveryUri.toASCIIString());
                 }
@@ -115,7 +116,6 @@ class LRAAnnotationHandler implements AnnotationHandler {
                 // non existing lra, fall thru to requires_new
             case REQUIRES_NEW:
                 lraId = coordinatorClient.start(null, method.getDeclaringClass().getName() + "#" + method.getName(), timeLimit);
-                LOGGER.info("Coordinator confirmed started LRA " + lraId);
                 URI recoveryUri = coordinatorClient.join(lraId, timeLimit, participant);
                 reqCtx.getHeaders().add(LRA_HTTP_RECOVERY_HEADER, recoveryUri.toASCIIString());
                 break;
@@ -145,19 +145,17 @@ class LRAAnnotationHandler implements AnnotationHandler {
         if (lraId.isPresent()
                 && (cancelOnFamilies.contains(responseContext.getStatusInfo().getFamily())
                 || cancelOnStatuses.contains(responseContext.getStatusInfo().toEnum()))) {
-            LOGGER.info("Cancelling LRA " + lraId.get());
             coordinatorClient.cancel(lraId.get());
             LRAThreadContext.clear();
         } else if (lraId.isPresent() && end) {
-            LOGGER.info("Closing LRA " + lraId.get());
             coordinatorClient.close(lraId.get());
             LRAThreadContext.clear();
         }
-        URI suppressedLra = (URI) requestContext.getProperty("suppressed.lra");
-        if (suppressedLra != null){
+        URI suppressedLra = (URI) requestContext.getProperty(PROP_KEY_SUPPRESSED_LRA);
+        if (suppressedLra != null) {
             responseContext.getHeaders().putSingle(LRA_HTTP_CONTEXT_HEADER, suppressedLra.toASCIIString());
         }
-        
+
         if (lraId.isPresent()) {
             responseContext.getHeaders().putIfAbsent(LRA_HTTP_CONTEXT_HEADER, List.of(lraId.get().toASCIIString()));
         }

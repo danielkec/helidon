@@ -17,11 +17,6 @@
 
 package io.helidon.microprofile.lra.resources;
 
-import org.eclipse.microprofile.lra.LRAResponse;
-import org.eclipse.microprofile.lra.annotation.Compensate;
-import org.eclipse.microprofile.lra.annotation.Complete;
-import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
-
 import java.net.URI;
 import java.time.temporal.ChronoUnit;
 import java.util.concurrent.CompletableFuture;
@@ -40,18 +35,36 @@ import io.helidon.microprofile.lra.BasicTest;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVERY_HEADER;
 
+import org.eclipse.microprofile.lra.LRAResponse;
+import org.eclipse.microprofile.lra.annotation.Compensate;
+import org.eclipse.microprofile.lra.annotation.Complete;
+import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
+
 @ApplicationScoped
-@Path("/recovery")
+@Path(Recovery.PATH_BASE)
 public class Recovery {
+
+    public static final String PATH_BASE = "recovery";
+    public static final String PATH_START_COMPENSATE_LRA = "start-compensate";
+    public static final String PATH_START_COMPLETE_LRA = "start-complete";
+    public static final String PATH_COMPLETE = "complete";
+    public static final String PATH_COMPENSATE = "compensate";
+    public static final String CS_START_COMPENSATE_LRA = PATH_BASE + PATH_START_COMPENSATE_LRA;
+    public static final String CS_START_COMPLETE_LRA = PATH_BASE + PATH_START_COMPLETE_LRA;
+    public static final String CS_COMPLETE_FIRST = PATH_BASE + PATH_COMPLETE + "first";
+    public static final String CS_COMPLETE_SECOND = PATH_BASE + PATH_COMPLETE + "second";
+    public static final String CS_COMPENSATE_FIRST = PATH_BASE + PATH_COMPENSATE + "first";
+    public static final String CS_COMPENSATE_SECOND = PATH_BASE + PATH_COMPENSATE + "second";
 
     @Inject
     BasicTest basicTest;
 
     @PUT
-    @Path("start-compensate")
+    @Path(Recovery.PATH_START_COMPENSATE_LRA)
     @LRA(value = LRA.Type.REQUIRES_NEW, timeLimit = 500, timeUnit = ChronoUnit.MILLIS)
     public Response startCompensateLRA(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
                                        @HeaderParam(LRA_HTTP_RECOVERY_HEADER) URI recoveryId) {
+        basicTest.getCompletable(CS_START_COMPENSATE_LRA).complete(lraId);
         // Force to compensate
         return Response.serverError()
                 .header(LRA_HTTP_CONTEXT_HEADER, lraId.toASCIIString())
@@ -60,10 +73,11 @@ public class Recovery {
     }
 
     @PUT
-    @Path("start-complete")
+    @Path(Recovery.PATH_START_COMPLETE_LRA)
     @LRA(value = LRA.Type.REQUIRES_NEW, timeLimit = 500, timeUnit = ChronoUnit.MILLIS)
     public Response startCompleteLRA(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
                                      @HeaderParam(LRA_HTTP_RECOVERY_HEADER) URI recoveryId) {
+        basicTest.getCompletable(CS_START_COMPLETE_LRA).complete(lraId);
         return Response.ok()
                 .header(LRA_HTTP_CONTEXT_HEADER, lraId.toASCIIString())
                 .header(LRA_HTTP_RECOVERY_HEADER, recoveryId.toASCIIString())
@@ -71,17 +85,17 @@ public class Recovery {
     }
 
     @PUT
-    @Path("/compensate")
+    @Path(Recovery.PATH_COMPENSATE)
     @Produces(MediaType.APPLICATION_JSON)
     @Compensate
     public Response compensateLRA(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
                                   @HeaderParam(LRA_HTTP_RECOVERY_HEADER) URI recoveryId) {
 
-        CompletableFuture<URI> completable = basicTest.getCompletable("recovery-compensated-first");
+        CompletableFuture<URI> completable = basicTest.getCompletable(CS_COMPENSATE_FIRST);
         boolean secondCall = completable.isDone();
         completable.complete(lraId);
         if (secondCall) {
-            basicTest.getCompletable("recovery-compensated-second").complete(lraId);
+            basicTest.getCompletable(CS_COMPENSATE_SECOND).complete(lraId);
         } else {
             return LRAResponse.failedToCompensate();
         }
@@ -89,17 +103,17 @@ public class Recovery {
     }
 
     @PUT
-    @Path("/complete")
+    @Path(Recovery.PATH_COMPLETE)
     @Produces(MediaType.APPLICATION_JSON)
     @Complete
     public Response completeLRA(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
                                 @HeaderParam(LRA_HTTP_RECOVERY_HEADER) URI recoveryId) {
 
-        CompletableFuture<URI> completable = basicTest.getCompletable("recovery-completed-first");
+        CompletableFuture<URI> completable = basicTest.getCompletable(CS_COMPLETE_FIRST);
         boolean secondCall = completable.isDone();
         completable.complete(lraId);
         if (secondCall) {
-            basicTest.getCompletable("recovery-completed-second").complete(lraId);
+            basicTest.getCompletable(CS_COMPLETE_SECOND).complete(lraId);
         } else {
             return LRAResponse.failedToComplete();
         }

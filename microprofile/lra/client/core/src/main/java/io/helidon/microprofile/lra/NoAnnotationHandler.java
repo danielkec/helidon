@@ -29,7 +29,7 @@ class NoAnnotationHandler implements AnnotationHandler {
     public void handleJaxrsBefore(ContainerRequestContext requestContext,
                                   ResourceInfo resourceInfo) {
         // Skip internal resource
-        if(resourceInfo.getResourceClass() == ParticipantResource.class)return;
+        if(resourceInfo.getResourceClass() == ParticipantCdiResource.class)return;
         
         // not LRA method at all, clear lra header
         String lraFromHeader = requestContext.getHeaders().getFirst(LRA_HTTP_CONTEXT_HEADER);

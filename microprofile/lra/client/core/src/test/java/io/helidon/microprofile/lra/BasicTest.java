@@ -44,9 +44,10 @@ import io.helidon.microprofile.config.ConfigCdiExtension;
 import io.helidon.microprofile.lra.coordinator.Coordinator;
 import io.helidon.microprofile.lra.coordinator.CoordinatorApplication;
 import io.helidon.microprofile.lra.coordinator.client.CoordinatorClient;
-import io.helidon.microprofile.lra.coordinator.client.NarayanaResourceAdapter;
 import io.helidon.microprofile.lra.coordinator.client.NarayanaClient;
+import io.helidon.microprofile.lra.coordinator.client.NarayanaResourceAdapter;
 import io.helidon.microprofile.lra.resources.CdiCompleteOrCompensate;
+import io.helidon.microprofile.lra.resources.CommonAfter;
 import io.helidon.microprofile.lra.resources.DontEnd;
 import io.helidon.microprofile.lra.resources.JaxrsCompleteOrCompensate;
 import io.helidon.microprofile.lra.resources.Recovery;
@@ -92,7 +93,7 @@ import org.junit.jupiter.api.Test;
 @AddBean(InspectionService.class)
 @AddBean(ParticipantService.class)
 @AddBean(ParticipantApp.class)
-@AddConfig(key = "mp.lra.coordinator.url", value = "http://localhost:8070/lra-coordinator")
+@AddConfig(key = CoordinatorClient.CONF_KEY_COORDINATOR_URL, value = "http://localhost:8070/lra-coordinator")
 // Coordinator flavor
 @AddBean(NarayanaClient.class)
 @AddBean(NarayanaResourceAdapter.class)
@@ -117,6 +118,8 @@ import org.junit.jupiter.api.Test;
 @AddConfig(key = "server.sockets.0.bind-address", value = "localhost")
 public class BasicTest {
 
+    private static final long TIMEOUT_SEC = 10L;
+
     private static ScheduledExecutorService executor;
     private final Map<String, CompletableFuture<URI>> completionMap = new HashMap<>();
 
@@ -132,11 +135,11 @@ public class BasicTest {
     }
 
     public <T> T await(String key, URI lraId) {
-        return Single.<T>create(getCompletable(key, lraId), true).await(10, TimeUnit.SECONDS);
+        return Single.<T>create(getCompletable(key, lraId), true).await(TIMEOUT_SEC, TimeUnit.SECONDS);
     }
 
     public <T> T await(String key) {
-        return Single.<T>create(getCompletable(key), true).await(10, TimeUnit.SECONDS);
+        return Single.<T>create(getCompletable(key), true).await(TIMEOUT_SEC, TimeUnit.SECONDS);
     }
 
     @Inject
@@ -165,7 +168,7 @@ public class BasicTest {
                 .header(Work.HEADER_KEY, Work.NOOP)
                 .async()
                 .put(Entity.text(""))
-                .get(10, TimeUnit.SECONDS);
+                .get(TIMEOUT_SEC, TimeUnit.SECONDS);
         assertThat(response.getStatus(), AnyOf.anyOf(is(200), is(204)));
         URI lraId = await(JaxrsCompleteOrCompensate.CS_START_LRA);
         assertThat(await(JaxrsCompleteOrCompensate.CS_COMPLETE), is(lraId));
@@ -180,7 +183,7 @@ public class BasicTest {
                 .header(Work.HEADER_KEY, Work.BOOM)
                 .async()
                 .put(Entity.text(""))
-                .get(10, TimeUnit.SECONDS);
+                .get(TIMEOUT_SEC, TimeUnit.SECONDS);
         assertThat(response.getStatus(), is(500));
         URI lraId = await(JaxrsCompleteOrCompensate.CS_START_LRA);
         assertThat(await(JaxrsCompleteOrCompensate.CS_COMPENSATE), is(lraId));
@@ -195,7 +198,7 @@ public class BasicTest {
                 .header(Work.HEADER_KEY, Work.NOOP)
                 .async()
                 .put(Entity.text(""))
-                .get(10, TimeUnit.SECONDS);
+                .get(TIMEOUT_SEC, TimeUnit.SECONDS);
         assertThat(response.getStatus(), AnyOf.anyOf(is(200), is(204)));
         URI lraId = await(CdiCompleteOrCompensate.CS_START_LRA);
         assertThat(await(CdiCompleteOrCompensate.CS_COMPLETE), is(lraId));
@@ -210,7 +213,7 @@ public class BasicTest {
                 .header(Work.HEADER_KEY, Work.BOOM)
                 .async()
                 .put(Entity.text(""))
-                .get(10, TimeUnit.SECONDS);
+                .get(TIMEOUT_SEC, TimeUnit.SECONDS);
         assertThat(response.getStatus(), is(500));
         URI lraId = await(CdiCompleteOrCompensate.CS_START_LRA);
         assertThat(await(CdiCompleteOrCompensate.CS_COMPENSATE), is(lraId));
@@ -219,67 +222,71 @@ public class BasicTest {
 
     @Test
     void startAndAfter(WebTarget target) throws Exception {
-        Response response = target.path("start-and-after")
-                .path("start")
+        Response response = target.path(StartAndAfter.PATH_BASE)
+                .path(StartAndAfter.PATH_START_LRA)
                 .request()
                 .async()
                 .put(Entity.text(""))
-                .get(2, TimeUnit.SECONDS);
+                .get(TIMEOUT_SEC, TimeUnit.SECONDS);
         assertThat(response.getStatus(), AnyOf.anyOf(is(200), is(204)));
-        await("start-and-after");
+        URI lraId = UriBuilder.fromPath(response.getHeaderString(LRA_HTTP_CONTEXT_HEADER)).build();
+        assertThat(await(StartAndAfter.CS_START_LRA), is(lraId));
+        await(CommonAfter.CS_AFTER, lraId);
     }
 
     @Test
     void firstNotEnding(WebTarget target) throws Exception {
-        Response response = target.path("dont-end")
-                .path("first-not-ending")
+        Response response = target.path(DontEnd.PATH_BASE)
+                .path(DontEnd.PATH_START_LRA)
                 .request()
                 .async()
                 .put(Entity.text(""))
-                .get(10, TimeUnit.SECONDS);
+                .get(TIMEOUT_SEC, TimeUnit.SECONDS);
         assertThat(response.getStatus(), AnyOf.anyOf(is(200), is(204)));
-        URI lraId = await("first-not-ending");
+        URI lraId = await(DontEnd.CS_START_LRA);
         assertThat(coordinatorClient.status(lraId), is(LRAStatus.Active));
-        assertThat(target.path("dont-end")
-                .path("second-ending")
+        assertThat(target.path(DontEnd.PATH_BASE)
+                .path(DontEnd.PATH_START_SECOND_LRA)
                 .request()
                 .header(LRA_HTTP_CONTEXT_HEADER, lraId)
                 .async()
                 .put(Entity.text(""))
                 .get(10, TimeUnit.SECONDS).getStatus(), AnyOf.anyOf(is(200), is(204)));
-        await("second-ending");
+        await(DontEnd.CS_START_SECOND_LRA);
         assertClosedOrNotFound(lraId);
     }
 
     @Test
     void timeout(WebTarget target) throws Exception {
-        Response response = target.path("timeout")
-                .path("timeout")
+        Response response = target.path(Timeout.PATH_BASE)
+                .path(Timeout.PATH_START_LRA)
                 .request()
                 .async()
                 .put(Entity.text(""))
-                .get(2, TimeUnit.SECONDS);
+                .get(TIMEOUT_SEC, TimeUnit.SECONDS);
         assertThat(response.getStatus(), is(200));
-        await("timeout");
-        await("timeout-compensated");
+        URI lraId = UriBuilder.fromPath(response.getHeaderString(LRA_HTTP_CONTEXT_HEADER)).build();
+        assertThat(await(Timeout.CS_START_LRA), is(lraId));
+        assertThat(await(Timeout.CS_COMPENSATE), is(lraId));
     }
 
     @Test
     void compensateRecoveryTest(WebTarget target) throws ExecutionException, InterruptedException, TimeoutException {
         LocalDateTime start = LocalDateTime.now();
-        Response response = target.path("recovery")
-                .path("start-compensate")
+        Response response = target.path(Recovery.PATH_BASE)
+                .path(Recovery.PATH_START_COMPENSATE_LRA)
                 .request()
                 .async()
                 .put(Entity.text(""))
-                .get(5, TimeUnit.SECONDS);
+                .get(TIMEOUT_SEC, TimeUnit.SECONDS);
         assertThat(response.getStatus(), is(500));
         URI lraId = UriBuilder.fromPath(response.getHeaderString(LRA_HTTP_CONTEXT_HEADER)).build();
-        assertThat(await("recovery-compensated-first"), is(lraId));
+        assertThat(await(Recovery.CS_START_COMPENSATE_LRA), is(lraId));
+        assertThat(await(Recovery.CS_COMPENSATE_FIRST), is(lraId));
         LocalDateTime first = LocalDateTime.now();
         System.out.println("First compensate attempt after " + Duration.between(start, first));
         waitForRecovery(lraId);
-        assertThat(await("recovery-compensated-second"), is(lraId));
+        assertThat(await(Recovery.CS_COMPENSATE_SECOND), is(lraId));
         LocalDateTime second = LocalDateTime.now();
         System.out.println("Second compensate attempt after " + Duration.between(first, second));
     }
@@ -287,19 +294,20 @@ public class BasicTest {
     @Test
     void completeRecoveryTest(WebTarget target) throws ExecutionException, InterruptedException, TimeoutException {
         LocalDateTime start = LocalDateTime.now();
-        Response response = target.path("recovery")
-                .path("start-complete")
+        Response response = target.path(Recovery.PATH_BASE)
+                .path(Recovery.PATH_START_COMPLETE_LRA)
                 .request()
                 .async()
                 .put(Entity.text(""))
-                .get(5, TimeUnit.SECONDS);
+                .get(TIMEOUT_SEC, TimeUnit.SECONDS);
         assertThat(response.getStatus(), is(200));
         URI lraId = UriBuilder.fromPath(response.getHeaderString(LRA_HTTP_CONTEXT_HEADER)).build();
-        assertThat(await("recovery-completed-first"), is(lraId));
+        assertThat(await(Recovery.CS_START_COMPLETE_LRA), is(lraId));
+        assertThat(await(Recovery.CS_COMPLETE_FIRST), is(lraId));
         LocalDateTime first = LocalDateTime.now();
         System.out.println("First complete attempt after " + Duration.between(start, first));
         waitForRecovery(lraId);
-        assertThat(await("recovery-completed-second"), is(lraId));
+        assertThat(await(Recovery.CS_COMPLETE_SECOND), is(lraId));
         LocalDateTime second = LocalDateTime.now();
         System.out.println("Second complete attempt after " + Duration.between(first, second));
     }
@@ -312,7 +320,7 @@ public class BasicTest {
                 .request()
                 .async()
                 .put(Entity.text(ParticipantStatus.Active.name()))// report from @Status method
-                .get(5, TimeUnit.SECONDS);
+                .get(TIMEOUT_SEC, TimeUnit.SECONDS);
 
         assertThat(response.getStatus(), is(500));
         URI lraId = UriBuilder.fromPath(response.getHeaderString(LRA_HTTP_CONTEXT_HEADER)).build();
@@ -330,7 +338,7 @@ public class BasicTest {
                 .request()
                 .async()
                 .put(Entity.text(ParticipantStatus.Compensated.name()))// report from @Status method
-                .get(5, TimeUnit.SECONDS);
+                .get(TIMEOUT_SEC, TimeUnit.SECONDS);
 
         assertThat(response.getStatus(), is(500));
         URI lraId = UriBuilder.fromPath(response.getHeaderString(LRA_HTTP_CONTEXT_HEADER)).build();

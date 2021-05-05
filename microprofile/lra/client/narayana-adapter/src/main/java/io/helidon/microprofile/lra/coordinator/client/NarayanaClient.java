@@ -50,30 +50,44 @@ import org.eclipse.microprofile.lra.annotation.LRAStatus;
 @Named("narayana")
 public class NarayanaClient implements CoordinatorClient {
 
-    private final String coordinatorUrl;
-
     private static final Logger LOGGER = Logger.getLogger(NarayanaClient.class.getName());
 
+    private static final String QUERY_PARAM_CLIENT_ID = "ClientID";
+    private static final String QUERY_PARAM_TIME_LIMIT = "TimeLimit";
+    private static final String QUERY_PARAM_PARENT_LRA = "ParentLRA";
+    private static final String HEADER_LINK = "Link";
+
+    private final String coordinatorUrl;
+    private final Long coordinatorTimeout;
+    private final TimeUnit coordinatorTimeoutUnit;
+
     @Inject
-    public NarayanaClient(@ConfigProperty(name = CoordinatorClient.CONF_KEY_COORDINATOR_URL) String coordinatorUrl) {
+    public NarayanaClient(
+            @ConfigProperty(name = CONF_KEY_COORDINATOR_URL) String coordinatorUrl,
+            @ConfigProperty(name = CONF_KEY_COORDINATOR_TIMEOUT, defaultValue = "10") Long coordinatorTimeout,
+            @ConfigProperty(name = CONF_KEY_COORDINATOR_TIMEOUT_UNIT, defaultValue = "SECONDS") TimeUnit coordinatorTimeoutUnit
+    ) {
         this.coordinatorUrl = coordinatorUrl;
+        this.coordinatorTimeout = coordinatorTimeout;
+        this.coordinatorTimeoutUnit = coordinatorTimeoutUnit;
     }
 
     @Override
-    public URI start(final URI parentLRA, final String clientID, final Long timeout) throws WebApplicationException {
+    public URI start(URI parentLRA, String clientID, Long timeout) throws WebApplicationException {
         try {
             Response response = ClientBuilder.newClient()
                     .target(coordinatorUrl)
                     .path("start")
-                    .queryParam("ClientID", Optional.ofNullable(clientID).orElse(""))
-                    .queryParam("TimeLimit", Optional.ofNullable(timeout).orElse(0L))
-                    .queryParam("ParentLRA", Optional.ofNullable(parentLRA)
+                    .queryParam(QUERY_PARAM_CLIENT_ID, Optional.ofNullable(clientID).orElse(""))
+                    .queryParam(QUERY_PARAM_TIME_LIMIT, Optional.ofNullable(timeout).orElse(0L))
+                    .queryParam(QUERY_PARAM_PARENT_LRA, Optional.ofNullable(parentLRA)
                             .map(p -> URLEncoder.encode(p.toString(), StandardCharsets.UTF_8))
                             .orElse(""))
                     .request()
                     .async()
                     .post(null)
-                    .get(10, TimeUnit.SECONDS);
+                    .get(coordinatorTimeout, coordinatorTimeoutUnit);
+
             if (response.getStatus() != 201) {
                 LOGGER.log(Level.SEVERE, "Unexpected response from coordinator. " + response.getStatusInfo().getReasonPhrase());
                 throw new WebApplicationException("Unexpected response " + response.getStatus() + " from coordinator "
@@ -86,7 +100,7 @@ public class NarayanaClient implements CoordinatorClient {
     }
 
     @Override
-    public void cancel(final URI lraId) throws WebApplicationException {
+    public void cancel(URI lraId) throws WebApplicationException {
         try {
             Response response = ClientBuilder.newClient()
                     .target(coordinatorUrl)
@@ -95,7 +109,7 @@ public class NarayanaClient implements CoordinatorClient {
                     .request()
                     .async()
                     .put(Entity.text(""))
-                    .get(10, TimeUnit.SECONDS);
+                    .get(coordinatorTimeout, coordinatorTimeoutUnit);
 
             switch (response.getStatus()) {
                 case 404:
@@ -111,7 +125,7 @@ public class NarayanaClient implements CoordinatorClient {
     }
 
     @Override
-    public void close(final URI lraId) throws WebApplicationException {
+    public void close(URI lraId) throws WebApplicationException {
         try {
             Response response = ClientBuilder.newClient()
                     .target(coordinatorUrl)
@@ -120,7 +134,7 @@ public class NarayanaClient implements CoordinatorClient {
                     .request()
                     .async()
                     .put(Entity.text(""))
-                    .get(10, TimeUnit.SECONDS);
+                    .get(coordinatorTimeout, coordinatorTimeoutUnit);
 
             switch (response.getStatus()) {
                 case 404:
@@ -141,16 +155,15 @@ public class NarayanaClient implements CoordinatorClient {
                     Participant participant) throws WebApplicationException {
         try {
             String links = compensatorLinks(participant);
-            LOGGER.log(Level.INFO, "JOIN LINKS: " + links);
             Response response = ClientBuilder.newClient()
                     .target(coordinatorUrl)
                     .path(lraId.toASCIIString())
-                    .queryParam("TimeLimit", timeLimit)
+                    .queryParam(QUERY_PARAM_TIME_LIMIT, timeLimit)
                     .request()
-                    .header("Link", links)
+                    .header(HEADER_LINK, links) // links are expected either in header
                     .async()
-                    .put(Entity.text(links))
-                    .get(10, TimeUnit.SECONDS);
+                    .put(Entity.text(links))    // or as a body
+                    .get(coordinatorTimeout, coordinatorTimeoutUnit);
 
             switch (response.getStatus()) {
                 case 412:
@@ -184,7 +197,7 @@ public class NarayanaClient implements CoordinatorClient {
                     .request()
                     .async()
                     .put(Entity.text(compensatorLinks(participant)))
-                    .get(10, TimeUnit.SECONDS);
+                    .get(coordinatorTimeout, coordinatorTimeoutUnit);
 
             switch (response.getStatus()) {
                 case 404:
@@ -203,7 +216,7 @@ public class NarayanaClient implements CoordinatorClient {
 
 
     @Override
-    public LRAStatus status(final URI lraId) throws WebApplicationException {
+    public LRAStatus status(URI lraId) throws WebApplicationException {
         try {
             Response response = ClientBuilder.newClient()
                     .target(coordinatorUrl)
@@ -212,7 +225,7 @@ public class NarayanaClient implements CoordinatorClient {
                     .request()
                     .async()
                     .get()
-                    .get(10, TimeUnit.SECONDS);
+                    .get(coordinatorTimeout, coordinatorTimeoutUnit);
 
             switch (response.getStatus()) {
                 case 404:
@@ -230,6 +243,22 @@ public class NarayanaClient implements CoordinatorClient {
         }
     }
 
+    /**
+     * Narayana accepts participant's links as a {@link javax.ws.rs.core.Link}s delimited by commas.
+     * <p>
+     * Example:
+     * <pre>{@code
+     * <http://127.0.0.1:8080/lraresource/status>; rel="status"; title="status URI"; type="text/plain",
+     * <http://127.0.0.1:8080/lraresource/compensate>; rel="compensate"; title="compensate URI"; type="text/plain",
+     * <http://127.0.0.1:8080/lraresource/after>; rel="after"; title="after URI"; type="text/plain",
+     * <http://127.0.0.1:8080/lraresource/complete>; rel="complete"; title="complete URI"; type="text/plain",
+     * <http://127.0.0.1:8080/lraresource/forget>; rel="forget"; title="forget URI"; type="text/plain",
+     * <http://127.0.0.1:8080/lraresource/leave>; rel="leave"; title="leave URI"; type="text/plain"
+     * }</pre>
+     *
+     * @param p participant to serialize as links
+     * @return links delimited by comma
+     */
     private String compensatorLinks(Participant p) {
         return Map.of(
                 "compensate", p.compensate(),

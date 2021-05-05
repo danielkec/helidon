@@ -36,8 +36,6 @@ import javax.ws.rs.POST;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
-import javax.ws.rs.core.Link;
-import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.UriBuilder;
 
 import io.helidon.microprofile.lra.coordinator.client.Participant;
@@ -50,7 +48,7 @@ import org.eclipse.microprofile.lra.annotation.Status;
 import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
 import org.eclipse.microprofile.lra.annotation.ws.rs.Leave;
 
-public class ParticipantImpl implements Participant {
+class ParticipantImpl implements Participant {
 
     static final Set<Class<? extends Annotation>> LRA_ANNOTATIONS =
             Set.of(
@@ -90,7 +88,7 @@ public class ParticipantImpl implements Participant {
                             .noneMatch(JAX_RS_ANNOTATIONS::contains)) {
                         //no jar-rs annotation means LRA cdi method
                         URI uri = UriBuilder.fromUri(baseUri)
-                                .path("lra-client-cdi-methods") //Auxiliary Jax-Rs resource for cdi methods 
+                                .path(ParticipantCdiResource.CDI_PARTICIPANT_PATH) //Auxiliary Jax-Rs resource for cdi methods 
                                 .path(e.getKey().getSimpleName().toLowerCase())//@Complete -> /complete
                                 .path(resourceClazz.getName())
                                 .path(method.getName())
@@ -111,7 +109,7 @@ public class ParticipantImpl implements Participant {
                 });
     }
 
-    public boolean isLraMethod(Method m) {
+    boolean isLraMethod(Method m) {
         return methodMap.values().stream().flatMap(Collection::stream).anyMatch(m::equals);
     }
 
@@ -139,7 +137,7 @@ public class ParticipantImpl implements Participant {
         return Optional.ofNullable(compensatorLinks.get(Status.class));
     }
 
-    public static Optional<Annotation> getLRAAnnotation(Method m) {
+    static Optional<Annotation> getLRAAnnotation(Method m) {
         List<Annotation> found = Arrays.stream(m.getDeclaredAnnotations())
                 .filter(a -> LRA_ANNOTATIONS.contains(a.annotationType()))
                 .collect(Collectors.toList());
@@ -159,28 +157,7 @@ public class ParticipantImpl implements Participant {
         return found.stream().findFirst();
     }
 
-    public String compensatorLinks() {
-        return Map.of(
-                "compensate", compensate(),
-                "complete", complete(),
-                "forget", forget(),
-                "leave", leave(),
-                "after", after(),
-                "status", status()
-        )
-                .entrySet()
-                .stream()
-                .filter(e -> e.getValue().isPresent())
-                .map(e -> Link.fromUri(e.getValue().get())
-                        .title(e.getKey() + " URI")
-                        .rel(e.getKey())
-                        .type(MediaType.TEXT_PLAIN)
-                        .build())
-                .map(String::valueOf)
-                .collect(Collectors.joining(","));
-    }
-
-    public static Map<Class<? extends Annotation>, Set<Method>> scanForLRAMethods(Class<?> clazz) {
+    static Map<Class<? extends Annotation>, Set<Method>> scanForLRAMethods(Class<?> clazz) {
         //TODO: use jandex
         Map<Class<? extends Annotation>, Set<Method>> methods = new HashMap<>();
         do {

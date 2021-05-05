@@ -17,9 +17,6 @@
 
 package io.helidon.microprofile.lra.resources;
 
-import org.eclipse.microprofile.lra.annotation.AfterLRA;
-import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
-
 import java.net.URI;
 
 import javax.enterprise.context.ApplicationScoped;
@@ -31,10 +28,15 @@ import javax.ws.rs.core.Response;
 
 import io.helidon.microprofile.lra.BasicTest;
 
-import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
+import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_ENDED_CONTEXT_HEADER;
+
+import org.eclipse.microprofile.lra.annotation.AfterLRA;
+import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
 
 @ApplicationScoped
 public class CommonAfter {
+
+    public static final String CS_AFTER = "after-lra";
 
     @Inject
     BasicTest basicTest;
@@ -42,8 +44,8 @@ public class CommonAfter {
     @AfterLRA
     @Path("/after")
     @PUT
-    public Response after(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId, String userData) {
-        basicTest.getCompletable("start-and-after").complete(null);
+    public Response after(@HeaderParam(LRA_HTTP_ENDED_CONTEXT_HEADER) URI lraId, String userData) {
+        basicTest.getCompletable(CS_AFTER, lraId).complete(lraId);
         return Response.ok(ParticipantStatus.Completed.name()).build();
     }
 }

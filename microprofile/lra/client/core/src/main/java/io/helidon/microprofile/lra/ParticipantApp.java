@@ -24,6 +24,6 @@ import javax.ws.rs.core.Application;
 public class ParticipantApp extends Application {
     @Override
     public Set<Class<?>> getClasses() {
-        return Set.of(ParticipantResource.class);
+        return Set.of(ParticipantCdiResource.class);
     }
 }

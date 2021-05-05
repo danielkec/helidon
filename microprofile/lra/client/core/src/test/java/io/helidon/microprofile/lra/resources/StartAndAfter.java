@@ -17,8 +17,6 @@
 
 package io.helidon.microprofile.lra.resources;
 
-import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
-
 import java.net.URI;
 
 import javax.enterprise.context.ApplicationScoped;
@@ -28,15 +26,21 @@ import javax.ws.rs.Path;
 
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
 
+import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
+
 @ApplicationScoped
-@Path("/start-and-after")
+@Path(StartAndAfter.PATH_BASE)
 public class StartAndAfter extends CommonAfter {
+
+    public static final String PATH_BASE = "start-and-after";
+    public static final String PATH_START_LRA = "start";
+    public static final String CS_START_LRA = PATH_BASE + PATH_START_LRA;
 
     @PUT
     @LRA(LRA.Type.REQUIRES_NEW)
-    @Path("/start")
+    @Path(StartAndAfter.PATH_START_LRA)
     public void doInTransaction(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId) {
-        //Single.timer(100, TimeUnit.MILLISECONDS, executor).await();
+        basicTest.getCompletable(CS_START_LRA).complete(lraId);
     }
 
 }

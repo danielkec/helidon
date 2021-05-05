@@ -47,14 +47,15 @@ import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVER
 import org.eclipse.microprofile.lra.LRAResponse;
 import org.eclipse.microprofile.lra.annotation.LRAStatus;
 import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
-import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
 
 @ApplicationScoped
-@Path("lra-client-cdi-methods")
-public class ParticipantResource {
+@Path(ParticipantCdiResource.CDI_PARTICIPANT_PATH)
+public class ParticipantCdiResource {
+    
+    static final String CDI_PARTICIPANT_PATH = "lra-client-cdi-resource";
     //http://127.0.0.1:43733/lra-client-cdi-methods/complete/io.helidon.microprofile.lra.TestApplication$StartAndCloseCdi/complete
 
-    private static final Logger LOGGER = Logger.getLogger(ParticipantResource.class.getName());
+    private static final Logger LOGGER = Logger.getLogger(ParticipantCdiResource.class.getName());
 
     private static final Map<ParticipantStatus, Supplier<Response>> PARTICIPANT_RESPONSE_BUILDERS = 
             Map.of(

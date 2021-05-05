@@ -30,6 +30,7 @@ import javax.ws.rs.container.ResourceInfo;
 
 import io.helidon.microprofile.lra.coordinator.client.CoordinatorClient;
 
+import org.eclipse.microprofile.lra.annotation.AfterLRA;
 import org.eclipse.microprofile.lra.annotation.Complete;
 import org.eclipse.microprofile.lra.annotation.Status;
 import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
@@ -42,7 +43,8 @@ interface AnnotationHandler {
             Map.of(
                     LRA.class.getName(), LRAAnnotationHandler::new,
                     Leave.class.getName(), (a, client, i, p) -> new LeaveAnnotationHandler(client, p),
-                    Status.class.getName(), (a, client, i, p) -> new NoopAnnotationHandler()
+                    Status.class.getName(), (a, client, i, p) -> new NoopAnnotationHandler(),
+                    AfterLRA.class.getName(), (a, client, i, p) -> new NoopAnnotationHandler()
             );
 
     Set<String> STAND_ALONE_ANNOTATIONS = Set.of(Status.class.getName(), Complete.class.getName());

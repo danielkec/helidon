@@ -39,7 +39,7 @@ public class ParticipantService {
 
     @Inject
     BeanManager beanManager;
-    
+
     final Map<Class<?>, Participant> participants = new HashMap<>();
 
     Participant participant(URI baseUri, Class<?> clazz) {
@@ -62,10 +62,11 @@ public class ParticipantService {
             Objects.requireNonNull(bean, () -> "Missing bean reference for participant method: " + classFqdn + "#" + methodName);
             Method method = Arrays.stream(clazz.getDeclaredMethods())
                     .filter(m -> m.getName().equals(methodName)) //TODO: filter those with right annotation
-                    .findFirst().orElseThrow(() -> new RuntimeException("Cant find participant method " + methodName
+                    .findFirst()
+                    .orElseThrow(() -> new RuntimeException("Cant find participant method " + methodName
                             + " with participant method: " + classFqdn + "#" + methodName));
             int paramCount = method.getParameters().length;
-            return method.invoke(LRACdiExtension.lookup(bean, beanManager), 
+            return method.invoke(LRACdiExtension.lookup(bean, beanManager),
                     Stream.of(lraId, secondParam).limit(paramCount).toArray());
         } catch (IllegalAccessException e) {
             throw new RuntimeException("Cant invoke participant method " + methodName

@@ -220,29 +220,29 @@ public class InspectionService {
                     .collect(Collectors.toMap(AnnotationValue::name, Function.identity()));
         }
 
-        public LRA.Type value() {
+        LRA.Type value() {
             return org.eclipse.microprofile.lra.annotation.ws.rs.LRA.Type.valueOf(values.get("value").asEnum());
         }
 
-        public long timeLimit() {
+        long timeLimit() {
             return values.get("timeLimit").asLong();
         }
 
-        public ChronoUnit timeUnit() {
+        ChronoUnit timeUnit() {
             return ChronoUnit.valueOf(values.get("timeUnit").asEnum());
         }
 
-        public boolean end() {
+        boolean end() {
             return values.get("end").asBoolean();
         }
 
-        public Set<Response.Status.Family> cancelOnFamily() {
+        Set<Response.Status.Family> cancelOnFamily() {
             return Arrays.stream(values.get("cancelOnFamily").asEnumArray())
                     .map(Response.Status.Family::valueOf)
                     .collect(Collectors.toSet());
         }
 
-        public Set<Response.Status> cancelOn() {
+        Set<Response.Status> cancelOn() {
             return Arrays.stream(values.get("cancelOn").asEnumArray())
                     .map(Response.Status::valueOf)
                     .collect(Collectors.toSet());

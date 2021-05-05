@@ -17,10 +17,6 @@
 
 package io.helidon.microprofile.lra.resources;
 
-import org.eclipse.microprofile.lra.LRAResponse;
-import org.eclipse.microprofile.lra.annotation.Compensate;
-import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
-
 import java.net.URI;
 import java.time.temporal.ChronoUnit;
 
@@ -38,15 +34,25 @@ import io.helidon.microprofile.lra.BasicTest;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVERY_HEADER;
 
+import org.eclipse.microprofile.lra.LRAResponse;
+import org.eclipse.microprofile.lra.annotation.Compensate;
+import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
+
 @ApplicationScoped
-@Path("/timeout")
+@Path(Timeout.PATH_BASE)
 public class Timeout {
+
+    public static final String PATH_BASE = "timeout";
+    public static final String PATH_START_LRA = "start";
+    public static final String PATH_COMPENSATE = "compensate";
+    public static final String CS_START_LRA = PATH_BASE + PATH_START_LRA;
+    public static final String CS_COMPENSATE = PATH_BASE + PATH_COMPENSATE;
 
     @Inject
     BasicTest basicTest;
 
     @PUT
-    @Path("timeout")
+    @Path(Timeout.PATH_START_LRA)
     @LRA(value = LRA.Type.REQUIRES_NEW, timeLimit = 500, timeUnit = ChronoUnit.MILLIS)
     public Response startLRA(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId) {
 
@@ -54,17 +60,17 @@ public class Timeout {
             Thread.sleep(1000);
         } catch (InterruptedException e) {
         }
-        basicTest.getCompletable("timeout").complete(lraId);
+        basicTest.getCompletable(Timeout.CS_START_LRA).complete(lraId);
         return Response.ok().build();
     }
 
     @PUT
-    @Path("/compensate")
+    @Path(Timeout.PATH_COMPENSATE)
     @Produces(MediaType.APPLICATION_JSON)
     @Compensate
     public Response compensateWork(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
                                    @HeaderParam(LRA_HTTP_RECOVERY_HEADER) URI recoveryId) {
-        basicTest.getCompletable("timeout-compensated").complete(null);
+        basicTest.getCompletable(Timeout.CS_COMPENSATE).complete(lraId);
         return LRAResponse.compensated();
     }
 }

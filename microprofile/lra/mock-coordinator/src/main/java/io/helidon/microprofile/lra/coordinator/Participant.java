@@ -62,17 +62,16 @@ import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
 @XmlAccessorType(XmlAccessType.FIELD)
 public class Participant {
 
-    private static final int RETRY_CNT = 5;
+    private static final int RETRY_CNT = 30;
 
     private static final Logger LOGGER = Logger.getLogger(Participant.class.getName());
-    private boolean isAfterLRASuccessfullyCalledIfEnlisted;
     private boolean isForgotten;
     private final AtomicReference<AfterLraStatus> afterLRACalled = new AtomicReference<>(AfterLraStatus.NOT_SENT);
     private final AtomicReference<SendingStatus> sendingStatus = new AtomicReference<>(SendingStatus.NOT_SENDING);
     AtomicInteger remainingCloseAttempts = new AtomicInteger(RETRY_CNT);
     AtomicInteger remainingAfterLraAttempts = new AtomicInteger(RETRY_CNT);
 
-    private final AtomicReference<Status> status = new AtomicReference<>(Status.ACTIVE);
+    final AtomicReference<Status> status = new AtomicReference<>(Status.ACTIVE);
 
     enum Status {
         ACTIVE(Active, null, null, false, Set.of(Completing, Compensating)),
@@ -85,7 +84,7 @@ public class Participant {
         CLIENT_COMPENSATING(Compensating, COMPENSATED, FAILED_TO_COMPENSATE, false, Set.of(Compensated, FailedToCompensate)),
         CLIENT_COMPLETING(Completing, COMPLETED, FAILED_TO_COMPLETE, false, Set.of(Completed, FailedToComplete)),
         COMPENSATING(Compensating, COMPENSATED, FAILED_TO_COMPENSATE, false, Set.of(Compensated, FailedToCompensate)),
-        COMPLETING(Completing, COMPLETED, FAILED_TO_COMPLETE, false, Set.of(Compensated, FailedToCompensate));
+        COMPLETING(Completing, COMPLETED, FAILED_TO_COMPLETE, false, Set.of(Completed, FailedToComplete));
 
         private final ParticipantStatus participantStatus;
         private final Status successFinalStatus;
@@ -197,7 +196,7 @@ public class Participant {
     }
 
     public boolean isAfterLRASuccessfullyCalledIfEnlisted() {
-        return isAfterLRASuccessfullyCalledIfEnlisted || getAfterURI().isEmpty();
+        return getAfterURI().isEmpty();
     }
 
     //A listener is a participant with afterURI endpoint. It may not have a complete or compensate endpoint.
@@ -241,7 +240,7 @@ public class Participant {
                 status.set(Status.FAILED_TO_COMPENSATE);
                 return true;
             } else if (remainingCloseAttempts.decrementAndGet() <= 0) {
-                LOGGER.log(Level.INFO, "Participant didn't report final status after {0} status call retries.", RETRY_CNT);
+                LOGGER.log(Level.INFO, "Participant didnt report final status after {0} status call retries.", new Object[] {RETRY_CNT});
                 status.set(Status.FAILED_TO_COMPENSATE);
                 return true;
             }
@@ -305,7 +304,7 @@ public class Participant {
                 status.set(Status.FAILED_TO_COMPLETE);
                 return true;
             } else if (remainingCloseAttempts.decrementAndGet() <= 0) {
-                LOGGER.log(Level.INFO, "Participant didn't report final status after {0} status call retries.", RETRY_CNT);
+                LOGGER.log(Level.INFO, "Participant didnt report final status after {0} status call retries.", new Object[] {RETRY_CNT});
                 status.set(Status.FAILED_TO_COMPLETE);
                 return true;
             }

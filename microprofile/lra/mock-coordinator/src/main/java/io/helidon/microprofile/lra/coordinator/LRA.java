@@ -22,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.StringJoiner;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -176,22 +177,34 @@ public class LRA {
             }
         }
         cancel();
-        if (!sendAfterLRA()) return; // not all afters sent
+//        if (!sendAfterLRA()) return; // not all afters sent
+        sendAfterLRA(); // not all afters sent
         if (areAllInEndState() && areAllAfterLRASuccessfullyCalledOrForgotten()) {
-            if (forgetAnyUnilaterallyCompleted()) {
+            if (forgetNested()) {
                 // keep terminated for 5 minutes before deletion
                 whenReadyToDelete = System.currentTimeMillis() + 5 * 1000 * 60;
             }
         }
     }
 
-    public boolean forgetAnyUnilaterallyCompleted() {
+    public boolean forgetNested() {
         for (LRA nestedLRA : children) {
             if (nestedLRA.isNestedThatShouldBeForgottenAfterParentEnds) {
                 if (!nestedLRA.sendForget()) return false;
             }
         }
         return true;
+    }
+
+    public boolean tryForget() {
+        boolean allFinished = true;
+        for (Participant participant : participants) {
+            if (participant.getForgetURI().isEmpty() || participant.isForgotten()) continue;
+            if (participant.status.get() == Participant.Status.FAILED_TO_COMPLETE) {
+                allFinished = participant.sendForget(this);
+            }
+        }
+        return allFinished;
     }
 
     public AtomicReference<LRAStatus> status() {
@@ -237,7 +250,7 @@ public class LRA {
         return allSent;
     }
 
-    boolean sendForget() { //todo could gate with isprocessing here as well
+    boolean sendForget() {
         boolean areAllThatNeedToBeForgotten = true;
         for (Participant participant : participants) {
             if (participant.getForgetURI().isEmpty() || participant.isForgotten()) continue;
@@ -253,7 +266,7 @@ public class LRA {
 
     public boolean areAllAfterLRASuccessfullyCalledOrForgotten() {
         for (Participant participant : participants) {
-            if (!participant.isAfterLRASuccessfullyCalledIfEnlisted() && !participant.isForgotten()) return false;
+            if (participant.getAfterURI().isPresent() && !participant.isForgotten()) return false;
         }
         return true;
     }
@@ -270,5 +283,16 @@ public class LRA {
             if (!participant.isInEndStateOrListenerOnlyForTerminationType(isCompensate)) return false;
         }
         return true;
+    }
+
+    @Override
+    public String toString() {
+        return new StringJoiner(", ", LRA.class.getSimpleName() + "[", "]")
+                .add("timeout=" + timeout)
+                .add("lraId='" + lraId + "'")
+                .add("parentId=" + parentId)
+                .add("parent=" + parent)
+                .add("status=" + status)
+                .toString();
     }
 }

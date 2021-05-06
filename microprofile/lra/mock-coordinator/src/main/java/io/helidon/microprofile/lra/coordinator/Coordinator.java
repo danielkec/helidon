@@ -96,9 +96,10 @@ public class Coordinator {
             @QueryParam(TIMELIMIT_PARAM_NAME) @DefaultValue("0") Long timelimit,
             @QueryParam(PARENT_LRA_PARAM_NAME) @DefaultValue("") String parentLRA,
             @HeaderParam(LRA_HTTP_CONTEXT_HEADER) String parentId) throws WebApplicationException {
-        
+
         String lraUUID = "LRAID" + UUID.randomUUID(); //todo better UUID
         URI lraId = UriBuilder.fromPath(coordinatorURL).path(lraUUID).build();
+        LOGGER.log(Level.INFO, "POST START " + lraId);
         if (parentLRA != null && !parentLRA.isEmpty()) {
             LRA parent = lraPersistentRegistry.get(parentLRA.replace(coordinatorURL, ""));  //todo resolve coordinatorUrl here with member coordinatorURL
             if (parent != null) { // todo null would be unexpected and cause to compensate or exit entirely akin to systemexception
@@ -124,6 +125,7 @@ public class Coordinator {
     public Response closeLRA(
             @PathParam("LraId") String lraId) throws NotFoundException {
         LRA lra = lraPersistentRegistry.get(lraId);
+        LOGGER.log(Level.INFO, "PUT CLOSE " + lraId + " " + lra);
         if (lra == null) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
@@ -133,6 +135,7 @@ public class Coordinator {
         }
         tick();
         lra.close();
+        tick();
         return Response.ok().build();
     }
 
@@ -141,6 +144,7 @@ public class Coordinator {
     public Response cancelLRA(
             @PathParam("LraId") String lraId) throws NotFoundException {
         LRA lra = lraPersistentRegistry.get(lraId);
+        LOGGER.log(Level.INFO, "PUT CANCEL " + lraId + " " + lra);
         if (lra == null) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
@@ -152,12 +156,13 @@ public class Coordinator {
     @PUT
     @Path("{LraId}")
     @Produces(MediaType.APPLICATION_JSON)
-    public Response joinLRAViaBody(
-            @PathParam("LraId") String lraIdParam,
+    public Response join(
+            @PathParam("LraId") String lraId,
             @QueryParam(TIMELIMIT_PARAM_NAME) @DefaultValue("0") long timeLimit,
             @HeaderParam("Link") @DefaultValue("") String compensatorLink,
             String compensatorData) throws NotFoundException {
-        LRA lra = lraPersistentRegistry.get(lraIdParam);
+        LRA lra = lraPersistentRegistry.get(lraId);
+        LOGGER.log(Level.INFO, "PUT JOIN " + lraId + " " + lra);
         if (lra == null) {
             return Response.status(Response.Status.NOT_FOUND).build();
         } else {
@@ -167,7 +172,7 @@ public class Coordinator {
             }
         }
         lra.addParticipant(compensatorLink);
-        String recoveryUrl = coordinatorURL + lraIdParam;
+        String recoveryUrl = coordinatorURL + lraId;
         try {
             return Response.ok()
                     .entity(recoveryUrl)
@@ -175,7 +180,7 @@ public class Coordinator {
                     .header(LRA_HTTP_RECOVERY_HEADER, recoveryUrl)
                     .build();
         } catch (URISyntaxException e) {
-            LOGGER.log(Level.SEVERE, "Error when joining LRA " + lraIdParam, e);
+            LOGGER.log(Level.SEVERE, "Error when joining LRA " + lraId, e);
             throw new RuntimeException(e);
         }
     }
@@ -186,6 +191,7 @@ public class Coordinator {
     @Produces(MediaType.TEXT_PLAIN)
     public Response getStatus(@PathParam("LraId") String lraId) {
         LRA lra = lraPersistentRegistry.get(lraId);
+        LOGGER.log(Level.INFO, "GET STATUS " + lraId + " " + lra);
         if (lra == null) {
             return Response.status(Response.Status.NOT_FOUND)
                     .build();
@@ -199,7 +205,7 @@ public class Coordinator {
     @GET
     @Path("recovery")
     @Produces(MediaType.TEXT_PLAIN)
-    public Response recovery(@PathParam("LraId") String lraId) {
+    public Response recovery() {
         var recoverables = Set.of(LRAStatus.Cancelling, LRAStatus.Closing, LRAStatus.Active);
         return Coordinator.nextRecoveryCycle()
                 .map(String::valueOf)
@@ -213,7 +219,7 @@ public class Coordinator {
                 .await();
     }
 
-    @FixedRate(value = 200, timeUnit = TimeUnit.MILLISECONDS)
+    @FixedRate(value = 800, timeUnit = TimeUnit.MILLISECONDS)
     public void tick() {
         lraPersistentRegistry.stream().forEach(lra -> {
             if (lra.isReadyToDelete()) {
@@ -231,6 +237,13 @@ public class Coordinator {
                     if (lra.checkTimeout() && lra.status().get().equals(LRAStatus.Active)) {
                         LOGGER.log(Level.INFO, "Timeouting {0} ", lra.lraId);
                         lra.terminate();
+                    }
+                    if (Set.of(LRAStatus.Closed, LRAStatus.Cancelled).contains(lra.status().get())) {
+                        // If a participant is unable to complete or compensate immediately or because of a failure
+                        // then it must remember the fact (by reporting its' status via the @Status method) 
+                        // until explicitly told that it can clean up using this @Forget annotation.
+                        LOGGER.log(Level.INFO, "Forgetting {0} ", lra.lraId);
+                        lra.tryForget();
                     }
                 }
             }

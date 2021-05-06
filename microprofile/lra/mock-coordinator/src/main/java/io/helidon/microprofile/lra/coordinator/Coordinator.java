@@ -244,6 +244,7 @@ public class Coordinator {
                         // until explicitly told that it can clean up using this @Forget annotation.
                         LOGGER.log(Level.INFO, "Forgetting {0} ", lra.lraId);
                         lra.tryForget();
+                        lra.forgetNested();
                     }
                 }
             }

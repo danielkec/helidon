@@ -65,7 +65,8 @@ public class Participant {
     private static final int RETRY_CNT = 30;
 
     private static final Logger LOGGER = Logger.getLogger(Participant.class.getName());
-    private boolean isForgotten;
+    private final AtomicReference<CompensateStatus> compensateCalled = new AtomicReference<>(CompensateStatus.NOT_SENT);
+    private final AtomicReference<ForgetStatus> forgetCalled = new AtomicReference<>(ForgetStatus.NOT_SENT);
     private final AtomicReference<AfterLraStatus> afterLRACalled = new AtomicReference<>(AfterLraStatus.NOT_SENT);
     private final AtomicReference<SendingStatus> sendingStatus = new AtomicReference<>(SendingStatus.NOT_SENDING);
     AtomicInteger remainingCloseAttempts = new AtomicInteger(RETRY_CNT);
@@ -124,8 +125,7 @@ public class Participant {
             return Optional.ofNullable(failedFinalStatus.participantStatus);
         }
     }
-
-    //TODO: Participant needs custom states
+    
     enum SendingStatus {
         SENDING, NOT_SENDING;
     }
@@ -134,6 +134,15 @@ public class Participant {
         NOT_SENT, SENDING, SENT;
     }
 
+    enum ForgetStatus {
+        NOT_SENT, SENDING, SENT;
+    }
+
+    //TODO: Nested participant needs custom states
+    enum CompensateStatus {
+        NOT_SENT, SENDING, SENT;
+    }
+    
     @XmlElement
     @XmlJavaTypeAdapter(Link.JaxbAdapter.class)
     private final List<Link> compensatorLinks = new ArrayList<>(5);
@@ -187,12 +196,8 @@ public class Participant {
         return getCompensatorLink("status").map(Link::getUri);
     }
 
-    protected void setForgotten() {
-        this.isForgotten = true;
-    }
-
     boolean isForgotten() {
-        return isForgotten;
+        return forgetCalled.get() == ForgetStatus.SENT;
     }
 
     public boolean isAfterLRASuccessfullyCalledIfEnlisted() {
@@ -224,26 +229,29 @@ public class Participant {
     boolean sendCancel(LRA lra) {
         Optional<URI> endpointURI = getCompensateURI();
         if (!sendingStatus.compareAndSet(SendingStatus.NOT_SENDING, SendingStatus.SENDING)) return false;
+        // TODO: Nested participant needs its own state workflow
+        if (!compensateCalled.compareAndSet(CompensateStatus.NOT_SENT, CompensateStatus.SENDING)) return false;
         try {
-
-            // If the participant does not support idempotency then it MUST be able to report its status 
-            // by annotating one of the methods with the @Status annotation which should report the status
-            // in case we can't retrieve status from participant just retry n times
-            ParticipantStatus reportedClientStatus = retrieveStatus(lra).orElse(null);
-            if (reportedClientStatus == Compensated) {
-                LOGGER.log(Level.INFO, "Participant reports it is compensated.");
-                status.set(Status.COMPENSATED);
-                return true;
-            } else if (reportedClientStatus == FailedToCompensate) {
-                LOGGER.log(Level.INFO, "Participant reports it failed to compensate.");
-                status.set(Status.FAILED_TO_COMPENSATE);
-                return true;
-            } else if (remainingCloseAttempts.decrementAndGet() <= 0) {
-                LOGGER.log(Level.INFO, "Participant didnt report final status after {0} status call retries.", new Object[] {RETRY_CNT});
-                status.set(Status.FAILED_TO_COMPENSATE);
-                return true;
+            if (!status.get().equals(Status.ACTIVE)) {// call for client status only on retries
+                // If the participant does not support idempotency then it MUST be able to report its status 
+                // by annotating one of the methods with the @Status annotation which should report the status
+                // in case we can't retrieve status from participant just retry n times
+                ParticipantStatus reportedClientStatus = retrieveStatus(lra).orElse(null);
+                if (reportedClientStatus == Compensated) {
+                    LOGGER.log(Level.INFO, "Participant reports it is compensated.");
+                    status.set(Status.COMPENSATED);
+                    return true;
+                } else if (reportedClientStatus == FailedToCompensate) {
+                    LOGGER.log(Level.INFO, "Participant reports it failed to compensate.");
+                    status.set(Status.FAILED_TO_COMPENSATE);
+                    return true;
+                } else if (remainingCloseAttempts.decrementAndGet() <= 0) {
+                    LOGGER.log(Level.INFO, "Participant didnt report final status after {0} status call retries.", new Object[] {RETRY_CNT});
+                    status.set(Status.FAILED_TO_COMPENSATE);
+                    return true;
+                }
             }
-
+            
             Response response = client.target(endpointURI.get())
                     .request()
                     .headers(lra.headers())
@@ -257,6 +265,7 @@ public class Participant {
                 case 410:
                     LOGGER.log(Level.INFO, "Compensated participant of LRA {0} {1}", new Object[] {lra.lraId, this.getCompensateURI()});
                     status.set(Status.COMPENSATED);
+                    compensateCalled.set(CompensateStatus.SENT);
                     return true;
 
                 // retryable
@@ -282,6 +291,7 @@ public class Participant {
 
         } finally {
             sendingStatus.set(SendingStatus.NOT_SENDING);
+            compensateCalled.compareAndSet(CompensateStatus.SENDING, CompensateStatus.NOT_SENT);
         }
         return false;
     }
@@ -353,8 +363,8 @@ public class Participant {
     }
 
     public boolean trySendAfterLRA(LRA lra) {
-        if (!isInEndStateOrListenerOnly())return false;
-        
+        if (!isInEndStateOrListenerOnly()) return false;
+
         try {
             Optional<URI> afterURI = getAfterURI();
             if (afterURI.isPresent() && afterLRACalled.compareAndSet(AfterLraStatus.NOT_SENT, AfterLraStatus.SENDING)) {
@@ -389,26 +399,30 @@ public class Participant {
                         .header(LRA_HTTP_ENDED_CONTEXT_HEADER, lra.lraId)
                         .buildGet().invoke();
                 int responseStatus = response.getStatus();
-                if (responseStatus == 503) {
-                    LOGGER.log(Level.SEVERE, "Client reports unexpected status {0}, current participant state is {1}",
-                            new Object[] {503, status.get()});
-                } else if (responseStatus == 202) {
-                    return Optional.of(Completing);
-                } else if (responseStatus == 410) { //GONE
-                    //Completing -> FailedToComplete ...
-                    return status.get().failedFinalStatus();
-                } else {
-                    ParticipantStatus reportedStatus = valueOf(response.readEntity(String.class));
-                    Status currentStatus = status.get();
-                    if (currentStatus.validateNextStatus(reportedStatus)) {
-                        return Optional.of(reportedStatus);
-                    } else {
-                        LOGGER.log(Level.WARNING, "Client reports unexpected status {0}, current participant state is {1}",
-                                new Object[] {reportedStatus, currentStatus});
+                switch (responseStatus) {
+                    case 202:
+                        //TODO: what about canceling?
+                        return Optional.of(Completing);
+                    case 410: //GONE
+                        //Completing -> FailedToComplete ...
+                        return status.get().failedFinalStatus();
+                    case 503:
+                    case 500:
+                        LOGGER.log(Level.SEVERE, "Client reports unexpected status {0}, current participant state is {1}",
+                                new Object[] {503, status.get()});
                         return Optional.empty();
-                    }
+                    default:
+                        ParticipantStatus reportedStatus = valueOf(response.readEntity(String.class));
+                        Status currentStatus = status.get();
+                        if (currentStatus.validateNextStatus(reportedStatus)) {
+                            return Optional.of(reportedStatus);
+                        } else {
+                            LOGGER.log(Level.WARNING, "Client reports unexpected status {0}, current participant state is {1}",
+                                    new Object[] {reportedStatus, currentStatus});
+                            return Optional.empty();
+                        }
                 }
-            } catch (Exception e) { // IllegalArgumentException: No enum constant org.eclipse.microprofile.lra.annotation.ParticipantStatus.
+            } catch (Exception e) {
                 LOGGER.log(Level.SEVERE, "Error when getting participant status. " + statusURI, e);
             }
         }
@@ -416,7 +430,7 @@ public class Participant {
     }
 
     public boolean sendForget(LRA lra) {
-        boolean isForgotten = true;
+        if (!forgetCalled.compareAndSet(ForgetStatus.NOT_SENT, ForgetStatus.SENDING)) return false;
         try {
             Response response = client.target(getForgetURI().get())
                     .request()
@@ -424,14 +438,15 @@ public class Participant {
                     .buildDelete().invoke();
             int responseStatus = response.getStatus();
             if (responseStatus == 200 || responseStatus == 410) {
-                setForgotten();
+                forgetCalled.set(ForgetStatus.SENT);
             } else {
-                isForgotten = false;
+                throw new Exception("Unexpected response from participant " + response.getStatus());
             }
-        } catch (Exception e) {
-            isForgotten = false;
+        } catch (Throwable e) {
+            LOGGER.log(Level.WARNING, "Unable to send forget of lra {0} to {1}", new Object[] {lra.lraId, getForgetURI().get()});
+            forgetCalled.set(ForgetStatus.NOT_SENT);
         }
-        return isForgotten;
+        return forgetCalled.get() == ForgetStatus.SENT;
     }
 
     boolean equalCompensatorUris(String compensatorUris) {

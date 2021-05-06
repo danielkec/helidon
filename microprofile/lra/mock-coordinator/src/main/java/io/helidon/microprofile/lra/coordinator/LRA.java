@@ -68,7 +68,6 @@ public class LRA {
     boolean isRoot = false;
     boolean isParent;
     boolean isChild;
-    boolean isNestedThatShouldBeForgottenAfterParentEnds = false;
     private long whenReadyToDelete = 0;
 
     public LRA(String lraUUID) {
@@ -160,7 +159,8 @@ public class LRA {
 
     void cancel() {
         Set<LRAStatus> allowedStatuses = Set.of(LRAStatus.Active, LRAStatus.Cancelling);
-        if (LRAStatus.Cancelling != status.updateAndGet(old -> allowedStatuses.contains(old) ? LRAStatus.Cancelling : old)) {
+        if (LRAStatus.Cancelling != status.updateAndGet(old -> allowedStatuses.contains(old) ? LRAStatus.Cancelling : old)
+                && !isChild) { // nested can be compensated even if closed
             LOGGER.warning("Can't cancel LRA, it's already " + status.get().name() + " " + this.lraId);
             return;
         }
@@ -178,8 +178,7 @@ public class LRA {
             }
         }
         cancel();
-//        if (!sendAfterLRA()) return; // not all afters sent
-        sendAfterLRA(); // not all afters sent
+        sendAfterLRA();
         if (areAllInEndState() && areAllAfterLRASuccessfullyCalledOrForgotten()) {
             if (forgetNested()) {
                 // keep terminated for 5 minutes before deletion
@@ -190,9 +189,7 @@ public class LRA {
 
     public boolean forgetNested() {
         for (LRA nestedLRA : children) {
-            if (nestedLRA.isNestedThatShouldBeForgottenAfterParentEnds) {
-                if (!nestedLRA.sendForget()) return false;
-            }
+            if (!nestedLRA.sendForget()) return false;
         }
         return true;
     }
@@ -218,7 +215,7 @@ public class LRA {
             if (participant.isInEndStateOrListenerOnly() && !isChild) {
                 continue;
             }
-            allClosed = allClosed && participant.sendComplete(this);
+            allClosed = participant.sendComplete(this) && allClosed ;
         }
         if (allClosed) {
             this.status().compareAndSet(LRAStatus.Closing, LRAStatus.Closed);
@@ -226,14 +223,14 @@ public class LRA {
     }
 
     private void sendCancel() {
-        boolean allClosed = true;
+        boolean allDone = true;
         for (Participant participant : participants) {
             if (participant.isInEndStateOrListenerOnly() && !isChild) {
                 continue;
             }
-            allClosed = allClosed && participant.sendCancel(this);
+            allDone = participant.sendCancel(this) && allDone;
         }
-        if (allClosed) {
+        if (allDone) {
             this.status().compareAndSet(LRAStatus.Cancelling, LRAStatus.Cancelled);
         }
     }
@@ -248,12 +245,12 @@ public class LRA {
     }
 
     boolean sendForget() {
-        boolean areAllThatNeedToBeForgotten = true;
+        boolean allDone = true;
         for (Participant participant : participants) {
             if (participant.getForgetURI().isEmpty() || participant.isForgotten()) continue;
-            areAllThatNeedToBeForgotten = participant.sendForget(this);
+            allDone = participant.sendForget(this) && allDone;
         }
-        return areAllThatNeedToBeForgotten;
+        return allDone;
     }
 
     public boolean isReadyToDelete() {

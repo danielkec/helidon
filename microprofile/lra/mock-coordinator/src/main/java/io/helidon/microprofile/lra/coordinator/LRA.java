@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -59,7 +60,7 @@ public class LRA {
     @XmlIDREF
     List<LRA> children = new ArrayList<>();
     @XmlElement
-    List<Participant> participants = new ArrayList<>();
+    List<Participant> participants = new CopyOnWriteArrayList<>();
 
     private AtomicReference<LRAStatus> status = new AtomicReference<>(LRAStatus.Active);
 
@@ -239,13 +240,9 @@ public class LRA {
 
 
     boolean sendAfterLRA() {
-        if (!areAllInEndState()) {
-            return false;
-        }
-
         boolean allSent = true;
         for (Participant participant : participants) {
-            allSent = allSent && participant.sendAfterLRA(this);
+            allSent = participant.trySendAfterLRA(this) && allSent;
         }
         return allSent;
     }

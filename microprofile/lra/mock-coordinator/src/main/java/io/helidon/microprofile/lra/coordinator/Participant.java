@@ -205,8 +205,7 @@ public class Participant {
     }
 
     public boolean isInEndStateOrListenerOnly() {
-        return isListenerOnly()
-                || status.get().isFinal();
+        return isListenerOnly() || status.get().isFinal();
     }
 
     public boolean isInEndStateOrListenerOnlyForTerminationType(boolean isCompensate) {
@@ -291,24 +290,29 @@ public class Participant {
         Optional<URI> endpointURI = getCompleteURI();
         if (!sendingStatus.compareAndSet(SendingStatus.NOT_SENDING, SendingStatus.SENDING)) return false;
         try {
-            // If the participant does not support idempotency then it MUST be able to report its status 
-            // by annotating one of the methods with the @Status annotation which should report the status
-            // in case we can't retrieve status from participant just retry n times
-            ParticipantStatus reportedClientStatus = retrieveStatus(lra).orElse(null);
-            if (reportedClientStatus == Completed) {
-                LOGGER.log(Level.INFO, "Participant reports it is completed.");
-                status.set(Status.COMPLETED);
-                return true;
-            } else if (reportedClientStatus == FailedToComplete) {
-                LOGGER.log(Level.INFO, "Participant reports it failed to complete.");
-                status.set(Status.FAILED_TO_COMPLETE);
-                return true;
-            } else if (remainingCloseAttempts.decrementAndGet() <= 0) {
-                LOGGER.log(Level.INFO, "Participant didnt report final status after {0} status call retries.", new Object[] {RETRY_CNT});
-                status.set(Status.FAILED_TO_COMPLETE);
-                return true;
+            if (!status.get().equals(Status.ACTIVE)) {// call for client status only on retries
+                // If the participant does not support idempotency then it MUST be able to report its status 
+                // by annotating one of the methods with the @Status annotation which should report the status
+                // in case we can't retrieve status from participant just retry n times
+                ParticipantStatus reportedClientStatus = retrieveStatus(lra).orElse(null);
+                if (reportedClientStatus == Completed) {
+                    LOGGER.log(Level.INFO, "Participant reports it is completed.");
+                    status.set(Status.COMPLETED);
+                    return true;
+                } else if (reportedClientStatus == FailedToComplete) {
+                    LOGGER.log(Level.INFO, "Participant reports it failed to complete.");
+                    status.set(Status.FAILED_TO_COMPLETE);
+                    return true;
+                } else if (reportedClientStatus == Completing) {
+                    LOGGER.log(Level.INFO, "Participant reports it is still completing.");
+                    status.set(Status.CLIENT_COMPLETING);
+                    return false;
+                } else if (remainingCloseAttempts.decrementAndGet() <= 0) {
+                    LOGGER.log(Level.INFO, "Participant didnt report final status after {0} status call retries.", new Object[] {RETRY_CNT});
+                    status.set(Status.FAILED_TO_COMPLETE);
+                    return true;
+                }
             }
-
             Response response = client.target(endpointURI.get())
                     .request()
                     .headers(lra.headers())
@@ -348,7 +352,9 @@ public class Participant {
         return false;
     }
 
-    public boolean sendAfterLRA(LRA lra) {
+    public boolean trySendAfterLRA(LRA lra) {
+        if (!isInEndStateOrListenerOnly())return false;
+        
         try {
             Optional<URI> afterURI = getAfterURI();
             if (afterURI.isPresent() && afterLRACalled.compareAndSet(AfterLraStatus.NOT_SENT, AfterLraStatus.SENDING)) {
@@ -383,7 +389,11 @@ public class Participant {
                         .header(LRA_HTTP_ENDED_CONTEXT_HEADER, lra.lraId)
                         .buildGet().invoke();
                 int responseStatus = response.getStatus();
-                if (responseStatus == 503 || responseStatus == 202) { //todo include other retriables
+                if (responseStatus == 503) {
+                    LOGGER.log(Level.SEVERE, "Client reports unexpected status {0}, current participant state is {1}",
+                            new Object[] {503, status.get()});
+                } else if (responseStatus == 202) {
+                    return Optional.of(Completing);
                 } else if (responseStatus == 410) { //GONE
                     //Completing -> FailedToComplete ...
                     return status.get().failedFinalStatus();

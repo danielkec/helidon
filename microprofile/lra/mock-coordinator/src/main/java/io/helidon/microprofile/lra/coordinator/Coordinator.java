@@ -219,7 +219,7 @@ public class Coordinator {
                 .await();
     }
 
-    @FixedRate(value = 800, timeUnit = TimeUnit.MILLISECONDS)
+    @FixedRate(value = 1000, timeUnit = TimeUnit.MILLISECONDS)
     public void tick() {
         lraPersistentRegistry.stream().forEach(lra -> {
             if (lra.isReadyToDelete()) {

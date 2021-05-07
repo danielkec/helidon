@@ -198,7 +198,7 @@ public class LRA {
         boolean allFinished = true;
         for (Participant participant : participants) {
             if (participant.getForgetURI().isEmpty() || participant.isForgotten()) continue;
-            if (participant.status.get() == Participant.Status.FAILED_TO_COMPLETE) {
+            if (Set.of(Participant.Status.COMPLETED, Participant.Status.FAILED_TO_COMPLETE).contains(participant.status.get())) {
                 allFinished = participant.sendForget(this);
             }
         }
@@ -215,7 +215,7 @@ public class LRA {
             if (participant.isInEndStateOrListenerOnly() && !isChild) {
                 continue;
             }
-            allClosed = participant.sendComplete(this) && allClosed ;
+            allClosed = participant.sendComplete(this) && allClosed;
         }
         if (allClosed) {
             this.status().compareAndSet(LRAStatus.Closing, LRAStatus.Closed);

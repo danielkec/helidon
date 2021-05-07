@@ -99,7 +99,6 @@ public class Coordinator {
 
         String lraUUID = "LRAID" + UUID.randomUUID(); //todo better UUID
         URI lraId = UriBuilder.fromPath(coordinatorURL).path(lraUUID).build();
-        LOGGER.log(Level.INFO, "POST START " + lraId);
         if (parentLRA != null && !parentLRA.isEmpty()) {
             LRA parent = lraPersistentRegistry.get(parentLRA.replace(coordinatorURL, ""));  //todo resolve coordinatorUrl here with member coordinatorURL
             if (parent != null) { // todo null would be unexpected and cause to compensate or exit entirely akin to systemexception
@@ -125,7 +124,6 @@ public class Coordinator {
     public Response closeLRA(
             @PathParam("LraId") String lraId) throws NotFoundException {
         LRA lra = lraPersistentRegistry.get(lraId);
-        LOGGER.log(Level.INFO, "PUT CLOSE " + lraId + " " + lra);
         if (lra == null) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
@@ -142,7 +140,6 @@ public class Coordinator {
     public Response cancelLRA(
             @PathParam("LraId") String lraId) throws NotFoundException {
         LRA lra = lraPersistentRegistry.get(lraId);
-        LOGGER.log(Level.INFO, "PUT CANCEL " + lraId + " " + lra);
         if (lra == null) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
@@ -159,7 +156,6 @@ public class Coordinator {
             @HeaderParam("Link") @DefaultValue("") String compensatorLink,
             String compensatorData) throws NotFoundException {
         LRA lra = lraPersistentRegistry.get(lraId);
-        LOGGER.log(Level.INFO, "PUT JOIN " + lraId + " " + lra);
         if (lra == null) {
             return Response.status(Response.Status.NOT_FOUND).build();
         } else {
@@ -188,7 +184,6 @@ public class Coordinator {
     @Produces(MediaType.TEXT_PLAIN)
     public Response getStatus(@PathParam("LraId") String lraId) {
         LRA lra = lraPersistentRegistry.get(lraId);
-        LOGGER.log(Level.INFO, "GET STATUS " + lraId + " " + lra);
         if (lra == null) {
             return Response.status(Response.Status.NOT_FOUND)
                     .build();
@@ -224,22 +219,22 @@ public class Coordinator {
             } else {
                 synchronized (this) {
                     if (LRAStatus.Cancelling == lra.status().get()) {
-                        LOGGER.log(Level.INFO, "Recovering {0}", lra.lraId);
+                        LOGGER.log(Level.FINE, "Recovering {0}", lra.lraId);
                         lra.cancel();
                     }
                     if (LRAStatus.Closing == lra.status().get()) {
-                        LOGGER.log(Level.INFO, "Recovering {0}", lra.lraId);
+                        LOGGER.log(Level.FINE, "Recovering {0}", lra.lraId);
                         lra.close();
                     }
                     if (lra.checkTimeout() && lra.status().get().equals(LRAStatus.Active)) {
-                        LOGGER.log(Level.INFO, "Timeouting {0} ", lra.lraId);
+                        LOGGER.log(Level.FINE, "Timeouting {0} ", lra.lraId);
                         lra.timeout();
                     }
                     if (Set.of(LRAStatus.Closed, LRAStatus.Cancelled).contains(lra.status().get())) {
                         // If a participant is unable to complete or compensate immediately or because of a failure
                         // then it must remember the fact (by reporting its' status via the @Status method) 
                         // until explicitly told that it can clean up using this @Forget annotation.
-                        LOGGER.log(Level.INFO, "Forgetting {0} {1}", new Object[] {lra.status().get(), lra.lraId});
+                        LOGGER.log(Level.FINE, "Forgetting {0} {1}", new Object[] {lra.status().get(), lra.lraId});
                         lra.tryForget();
 //                        lra.forgetNested();
                     }

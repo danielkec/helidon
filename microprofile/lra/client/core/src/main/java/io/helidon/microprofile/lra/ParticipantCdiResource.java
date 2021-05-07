@@ -73,11 +73,11 @@ public class ParticipantCdiResource {
     @PUT
     @Path("/compensate/{fqdn}/{methodName}")
     public Response compensate(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
-                               @HeaderParam(LRA_HTTP_RECOVERY_HEADER) URI recoveryId,
+                               @HeaderParam(LRA_HTTP_PARENT_CONTEXT_HEADER) URI parentId,
                                @PathParam("fqdn") String fqdn,
                                @PathParam("methodName") String methodName) {
         try {
-            Object result = participantService.invoke(fqdn, methodName, lraId, recoveryId);
+            Object result = participantService.invoke(fqdn, methodName, lraId, parentId);
             if (result instanceof Response) {
                 return (Response) result;
             } else if (result instanceof ParticipantStatus) {
@@ -93,11 +93,11 @@ public class ParticipantCdiResource {
     @PUT
     @Path("/complete/{fqdn}/{methodName}")
     public CompletionStage<Response> complete(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
-                                              @HeaderParam(LRA_HTTP_RECOVERY_HEADER) URI recoveryId,
+                                              @HeaderParam(LRA_HTTP_PARENT_CONTEXT_HEADER) URI parentId,
                                               @PathParam("fqdn") String fqdn,
                                               @PathParam("methodName") String methodName) {
         try {
-            Object result = participantService.invoke(fqdn, methodName, lraId, recoveryId);
+            Object result = participantService.invoke(fqdn, methodName, lraId, parentId);
             if (CompletionStage.class.isAssignableFrom(result.getClass())) {
                 return ((CompletionStage<?>) result).thenApply(o -> (Response) o);
             } else {

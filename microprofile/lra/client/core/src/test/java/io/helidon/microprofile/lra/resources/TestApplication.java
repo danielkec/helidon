@@ -36,7 +36,8 @@ public class TestApplication extends Application {
                 Timeout.class,
                 Recovery.class,
                 RecoveryStatus.class,
-                NestedCompleteOrCompensate.class
+                CdiNestedCompleteOrCompensate.class,
+                JaxRsNestedCompleteOrCompensate.class
         );
     }
 

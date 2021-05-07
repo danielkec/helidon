@@ -47,10 +47,11 @@ import io.helidon.microprofile.lra.coordinator.client.CoordinatorClient;
 import io.helidon.microprofile.lra.coordinator.client.NarayanaClient;
 import io.helidon.microprofile.lra.coordinator.client.NarayanaResourceAdapter;
 import io.helidon.microprofile.lra.resources.CdiCompleteOrCompensate;
+import io.helidon.microprofile.lra.resources.CdiNestedCompleteOrCompensate;
 import io.helidon.microprofile.lra.resources.CommonAfter;
 import io.helidon.microprofile.lra.resources.DontEnd;
+import io.helidon.microprofile.lra.resources.JaxRsNestedCompleteOrCompensate;
 import io.helidon.microprofile.lra.resources.JaxrsCompleteOrCompensate;
-import io.helidon.microprofile.lra.resources.NestedCompleteOrCompensate;
 import io.helidon.microprofile.lra.resources.Recovery;
 import io.helidon.microprofile.lra.resources.RecoveryStatus;
 import io.helidon.microprofile.lra.resources.StartAndAfter;
@@ -70,6 +71,7 @@ import io.helidon.microprofile.tests.junit5.HelidonTest;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.isIn;
 import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
@@ -108,7 +110,8 @@ import org.junit.jupiter.api.Test;
 @AddBean(Timeout.class)
 @AddBean(Recovery.class)
 @AddBean(RecoveryStatus.class)
-@AddBean(NestedCompleteOrCompensate.class)
+@AddBean(CdiNestedCompleteOrCompensate.class)
+@AddBean(JaxRsNestedCompleteOrCompensate.class)
 // Mock coordinator
 // comment out below annotations to use external coordinator
 @AddBean(Coordinator.class)
@@ -224,23 +227,44 @@ public class BasicTest {
     }
 
     @Test
-    void nestedComplete(WebTarget target) throws Exception {
+    void jaxRsNestedComplete(WebTarget target) throws Exception {
+        nestedCompleteOrCompensate(target, JaxRsNestedCompleteOrCompensate.PATH_BASE, Work.NOOP);
+    }
+
+    @Test
+    void jaxRsNestedCompensate(WebTarget target) throws Exception {
+        nestedCompleteOrCompensate(target, JaxRsNestedCompleteOrCompensate.PATH_BASE, Work.BOOM);
+    }
+
+    @Test
+    void cdiNestedComplete(WebTarget target) throws Exception {
+        nestedCompleteOrCompensate(target, CdiNestedCompleteOrCompensate.PATH_BASE, Work.NOOP);
+    }
+
+    @Test
+    void cdiNestedCompensate(WebTarget target) throws Exception {
+        nestedCompleteOrCompensate(target, CdiNestedCompleteOrCompensate.PATH_BASE, Work.BOOM);
+    }
+
+    void nestedCompleteOrCompensate(WebTarget target,
+                                    String pathBase,
+                                    Work endNestedLRAWork) throws Exception {
         // Start parent LRA
-        Response response = target.path(NestedCompleteOrCompensate.PATH_BASE)
-                .path(NestedCompleteOrCompensate.PATH_START_PARENT_LRA)
+        Response response = target.path(pathBase)
+                .path(CdiNestedCompleteOrCompensate.PATH_START_PARENT_LRA)
                 .request()
                 .header(Work.HEADER_KEY, Work.NOOP)
                 .async()
                 .put(Entity.text(""))
                 .get(TIMEOUT_SEC, TimeUnit.SECONDS);
 
-        assertThat(response.getStatus(), is(200));
+        assertThat(response.getStatus(), isIn(Work.NOOP.expectedResponseStatuses()));
         URI parentLraId = UriBuilder.fromPath(response.getHeaderString(LRA_HTTP_CONTEXT_HEADER)).build();
-        assertThat(await(NestedCompleteOrCompensate.CS_START_PARENT_LRA), is(parentLraId));
+        assertThat(await(CdiNestedCompleteOrCompensate.CS_START_PARENT_LRA), is(parentLraId));
 
         // Start nested LRA
-        response = target.path(NestedCompleteOrCompensate.PATH_BASE)
-                .path(NestedCompleteOrCompensate.PATH_START_NESTED_LRA)
+        response = target.path(pathBase)
+                .path(CdiNestedCompleteOrCompensate.PATH_START_NESTED_LRA)
                 .request()
                 .header(LRA_HTTP_CONTEXT_HEADER, parentLraId)
                 .header(Work.HEADER_KEY, Work.NOOP)
@@ -248,37 +272,44 @@ public class BasicTest {
                 .put(Entity.text(""))
                 .get(TIMEOUT_SEC, TimeUnit.SECONDS);
 
-        assertThat(response.getStatus(), is(200));
-        URI nestedLraId = await(NestedCompleteOrCompensate.CS_START_NESTED_LRA);
+        assertThat(response.getStatus(), isIn(Work.NOOP.expectedResponseStatuses()));
+        URI nestedLraId = await(CdiNestedCompleteOrCompensate.CS_START_NESTED_LRA);
 
         // Nothing is ended, completed or compensated
-        assertFalse(getCompletable(NestedCompleteOrCompensate.CS_END_PARENT_LRA).isDone());
-        assertFalse(getCompletable(NestedCompleteOrCompensate.CS_END_NESTED_LRA).isDone());
-        assertFalse(getCompletable(NestedCompleteOrCompensate.CS_COMPENSATED, parentLraId).isDone());
-        assertFalse(getCompletable(NestedCompleteOrCompensate.CS_COMPENSATED, nestedLraId).isDone());
-        assertFalse(getCompletable(NestedCompleteOrCompensate.CS_COMPLETED, parentLraId).isDone());
-        assertFalse(getCompletable(NestedCompleteOrCompensate.CS_COMPLETED, nestedLraId).isDone());
+        assertFalse(getCompletable(CdiNestedCompleteOrCompensate.CS_END_PARENT_LRA).isDone());
+        assertFalse(getCompletable(CdiNestedCompleteOrCompensate.CS_END_NESTED_LRA).isDone());
+        assertFalse(getCompletable(CdiNestedCompleteOrCompensate.CS_COMPENSATED, parentLraId).isDone());
+        assertFalse(getCompletable(CdiNestedCompleteOrCompensate.CS_COMPENSATED, nestedLraId).isDone());
+        assertFalse(getCompletable(CdiNestedCompleteOrCompensate.CS_COMPLETED, parentLraId).isDone());
+        assertFalse(getCompletable(CdiNestedCompleteOrCompensate.CS_COMPLETED, nestedLraId).isDone());
 
         // End nested LRA
-        response = target.path(NestedCompleteOrCompensate.PATH_BASE)
-                .path(NestedCompleteOrCompensate.PATH_END_NESTED_LRA)
+        response = target.path(pathBase)
+                .path(CdiNestedCompleteOrCompensate.PATH_END_NESTED_LRA)
                 .request()
                 .header(LRA_HTTP_CONTEXT_HEADER, nestedLraId)
-                .header(Work.HEADER_KEY, Work.NOOP)
+                .header(Work.HEADER_KEY, endNestedLRAWork)
                 .async()
                 .put(Entity.text(""))
                 .get(TIMEOUT_SEC, TimeUnit.SECONDS);
 
-        assertThat(response.getStatusInfo().getReasonPhrase(), response.getStatus(), is(200));
+        assertThat(response.getStatusInfo().getReasonPhrase(), response.getStatus(), isIn(endNestedLRAWork.expectedResponseStatuses()));
         assertThat(UriBuilder.fromPath(response.getHeaderString(LRA_HTTP_CONTEXT_HEADER)).build(), is(nestedLraId));
-        assertThat(await(NestedCompleteOrCompensate.CS_END_NESTED_LRA), is(nestedLraId));
-        assertFalse(getCompletable(NestedCompleteOrCompensate.CS_END_PARENT_LRA).isDone());
-        assertThat("Nested LRA should have completed and get parent LRA in the header.",
-                await(NestedCompleteOrCompensate.CS_COMPLETED, nestedLraId), is(parentLraId));
+        assertThat(await(CdiNestedCompleteOrCompensate.CS_END_NESTED_LRA), is(nestedLraId));
+        assertFalse(getCompletable(CdiNestedCompleteOrCompensate.CS_END_PARENT_LRA).isDone());
+        if (endNestedLRAWork == Work.BOOM) {
+            // Compensate expected
+            assertThat("Nested LRA should have compensated and get parent LRA in the header.",
+                    await(CdiNestedCompleteOrCompensate.CS_COMPENSATED, nestedLraId), is(parentLraId));
+        } else {
+            // Complete expected
+            assertThat("Nested LRA should have completed and get parent LRA in the header.",
+                    await(CdiNestedCompleteOrCompensate.CS_COMPLETED, nestedLraId), is(parentLraId));
+        }
 
         // End parent LRA
-        response = target.path(NestedCompleteOrCompensate.PATH_BASE)
-                .path(NestedCompleteOrCompensate.PATH_END_PARENT_LRA)
+        response = target.path(pathBase)
+                .path(CdiNestedCompleteOrCompensate.PATH_END_PARENT_LRA)
                 .request()
                 .header(LRA_HTTP_CONTEXT_HEADER, parentLraId)
                 .header(Work.HEADER_KEY, Work.NOOP)
@@ -286,15 +317,22 @@ public class BasicTest {
                 .put(Entity.text(""))
                 .get(TIMEOUT_SEC, TimeUnit.SECONDS);
 
-        assertThat(response.getStatusInfo().getReasonPhrase(), response.getStatus(), is(200));
+        assertThat(response.getStatusInfo().getReasonPhrase(), response.getStatus(), isIn(Work.NOOP.expectedResponseStatuses()));
         assertThat(UriBuilder.fromPath(response.getHeaderString(LRA_HTTP_CONTEXT_HEADER)).build(), is(parentLraId));
-        assertThat(await(NestedCompleteOrCompensate.CS_END_PARENT_LRA), is(parentLraId));
+        assertThat(await(CdiNestedCompleteOrCompensate.CS_END_PARENT_LRA), is(parentLraId));
 
         assertThat("Parent LRA should have completed and get null as parent LRA in the header.",
-                await(NestedCompleteOrCompensate.CS_COMPLETED, parentLraId), is(IsNull.nullValue()));
+                await(CdiNestedCompleteOrCompensate.CS_COMPLETED, parentLraId), is(IsNull.nullValue()));
+        assertFalse(getCompletable(CdiNestedCompleteOrCompensate.CS_COMPENSATED, parentLraId).isDone());
+        
+        if (endNestedLRAWork == Work.BOOM) {
+            // Compensated
+            assertFalse(getCompletable(CdiNestedCompleteOrCompensate.CS_COMPLETED, nestedLraId).isDone());
+        } else {
+            // Completed
+            assertFalse(getCompletable(CdiNestedCompleteOrCompensate.CS_COMPENSATED, nestedLraId).isDone());
+        }
 
-        assertFalse(getCompletable(NestedCompleteOrCompensate.CS_COMPENSATED, parentLraId).isDone());
-        assertFalse(getCompletable(NestedCompleteOrCompensate.CS_COMPENSATED, nestedLraId).isDone());
     }
 
     @Test

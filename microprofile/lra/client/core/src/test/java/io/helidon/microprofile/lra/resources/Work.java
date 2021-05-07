@@ -18,6 +18,7 @@
 package io.helidon.microprofile.lra.resources;
 
 import java.net.URI;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -26,10 +27,10 @@ import javax.ws.rs.core.Response;
 
 public enum Work {
 
-    NOOP(uri -> Response.ok().build()),
+    NOOP(uri -> Response.ok().build(), 200),
     BOOM(uri -> {
         throw new RuntimeException("BOOM!!! lraId: " + uri.toASCIIString());
-    }),
+    }, 500),
     INTERNAL_SERVER_ERROR(uri -> {
         return Response.serverError().
                 entity(new RuntimeException("BOOM!!! lraId: " + uri.toASCIIString()))
@@ -43,18 +44,24 @@ public enum Work {
                     .log(Level.SEVERE, "Delayed work of lraId: " + uri.toASCIIString() + " interrupted!", e);
         }
         return Response.ok().build();
-    }),
+    }, 200),
     ;
 
     public static final String HEADER_KEY = "test-work";
-    
-    private Function<URI, Response> worker;
+    private final Integer[] expectedStatuses;
 
-    Work(Function<URI, Response> worker) {
+    private final Function<URI, Response> worker;
+
+    Work(Function<URI, Response> worker, Integer... expectedStatuses) {
         this.worker = worker;
+        this.expectedStatuses = expectedStatuses;
     }
 
     public Response doWork(URI lraId) {
         return worker.apply(lraId);
+    }
+    
+    public Integer[] expectedResponseStatuses(){
+        return expectedStatuses;
     }
 }

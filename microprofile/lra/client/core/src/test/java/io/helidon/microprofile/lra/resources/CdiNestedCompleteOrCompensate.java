@@ -29,7 +29,6 @@ import javax.ws.rs.core.Response;
 import io.helidon.microprofile.lra.BasicTest;
 
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
-import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_PARENT_CONTEXT_HEADER;
 
 import org.eclipse.microprofile.lra.annotation.Compensate;
 import org.eclipse.microprofile.lra.annotation.Complete;
@@ -37,9 +36,9 @@ import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
 import org.eclipse.microprofile.lra.annotation.ws.rs.LRA;
 
 @ApplicationScoped
-@Path(NestedCompleteOrCompensate.PATH_BASE)
-public class NestedCompleteOrCompensate {
-    public static final String PATH_BASE = "nested";
+@Path(CdiNestedCompleteOrCompensate.PATH_BASE)
+public class CdiNestedCompleteOrCompensate {
+    public static final String PATH_BASE = "cdi-nested";
     public static final String PATH_START_PARENT_LRA = "start-parent";
     public static final String PATH_START_NESTED_LRA = "start-nested";
     public static final String PATH_END_PARENT_LRA = "end-parent";
@@ -90,28 +89,14 @@ public class NestedCompleteOrCompensate {
         return work.doWork(lraId);
     }
 
-//    @Complete
-//    public Response complete(URI lraId, URI parentLraId) {
-//        System.out.println("COMPLETING " + lraId);
-//        System.out.println("parent: " + parentLraId);
-//        return Response.ok(ParticipantStatus.Completed.name()).build();
-//    }
-
     @Complete
-    @Path("complete")
-    @PUT
-    public Response complete(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
-                             @HeaderParam(LRA_HTTP_PARENT_CONTEXT_HEADER) URI parentLraId) {
-        System.out.println("COMPLETING "+lraId);
+    public Response complete(URI lraId, URI parentLraId) {
         basicTest.getCompletable(CS_COMPLETED, lraId).complete(parentLraId);
         return Response.ok(ParticipantStatus.Completed.name()).build();
     }
 
     @Compensate
-    @Path("compensate")
-    @PUT
-    public Response compensate(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
-                               @HeaderParam(LRA_HTTP_PARENT_CONTEXT_HEADER) URI parentLraId) {
+    public Response compensate(URI lraId, URI parentLraId) {
         basicTest.getCompletable(CS_COMPENSATED, lraId).complete(parentLraId);
         return Response.ok(ParticipantStatus.Compensated.name()).build();
     }

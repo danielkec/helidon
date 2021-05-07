@@ -133,9 +133,7 @@ public class Coordinator {
             // Already time-outed
             return Response.status(Response.Status.GONE).build();
         }
-        tick();
         lra.close();
-        tick();
         return Response.ok().build();
     }
 
@@ -148,7 +146,6 @@ public class Coordinator {
         if (lra == null) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
-        tick();
         lra.cancel();
         return Response.ok().build();
     }
@@ -236,15 +233,15 @@ public class Coordinator {
                     }
                     if (lra.checkTimeout() && lra.status().get().equals(LRAStatus.Active)) {
                         LOGGER.log(Level.INFO, "Timeouting {0} ", lra.lraId);
-                        lra.terminate();
+                        lra.timeout();
                     }
                     if (Set.of(LRAStatus.Closed, LRAStatus.Cancelled).contains(lra.status().get())) {
                         // If a participant is unable to complete or compensate immediately or because of a failure
                         // then it must remember the fact (by reporting its' status via the @Status method) 
                         // until explicitly told that it can clean up using this @Forget annotation.
-                        LOGGER.log(Level.INFO, "Forgetting {0} ", lra.lraId);
+                        LOGGER.log(Level.INFO, "Forgetting {0} {1}", new Object[] {lra.status().get(), lra.lraId});
                         lra.tryForget();
-                        lra.forgetNested();
+//                        lra.forgetNested();
                     }
                 }
             }

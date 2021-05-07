@@ -150,10 +150,11 @@ public class LRA {
             LOGGER.warning("Can't close LRA, it's already " + status.get().name() + " " + this.lraId);
             return;
         }
+        sendComplete();
+        forgetNested();// needs to go before nested close, so we know if nested was already closed or not(non closed nested can't get @Forget call)
         for (LRA nestedLRA : children) {
             nestedLRA.close();
         }
-        sendComplete();
         sendAfterLRA();
     }
 
@@ -169,27 +170,30 @@ public class LRA {
         }
         sendCancel();
         sendAfterLRA();
+        tryForget();
     }
 
-    void terminate() {
+    void timeout() {
         for (LRA nestedLRA : children) {
             if (!nestedLRA.areAllInEndStateOrListenerOnlyForTerminationType(isCancel)) {
-                nestedLRA.terminate();
+                nestedLRA.timeout();
             }
         }
         cancel();
         sendAfterLRA();
-        if (areAllInEndState() && areAllAfterLRASuccessfullyCalledOrForgotten()) {
-            if (forgetNested()) {
-                // keep terminated for 5 minutes before deletion
-                whenReadyToDelete = System.currentTimeMillis() + 5 * 1000 * 60;
-            }
-        }
     }
 
     public boolean forgetNested() {
         for (LRA nestedLRA : children) {
-            if (!nestedLRA.sendForget()) return false;
+            //dont do forget not yet closed nested lra
+            if (nestedLRA.status.get() != LRAStatus.Closed) continue;
+            boolean allDone = true;
+            for (Participant participant : nestedLRA.participants) {
+                if (participant.getForgetURI().isEmpty() || participant.isForgotten()) continue;
+//                if (participant.status.get() == Participant.Status.COMPLETED) continue;
+                allDone = participant.sendForget(nestedLRA) && allDone;
+            }
+            if (!allDone) return false;
         }
         return true;
     }
@@ -199,11 +203,11 @@ public class LRA {
         for (Participant participant : participants) {
             if (participant.getForgetURI().isEmpty() || participant.isForgotten()) continue;
             if (Set.of(
-                    Participant.Status.COMPLETED,
+                    // Participant.Status.COMPLETED,
                     Participant.Status.FAILED_TO_COMPLETE,
                     Participant.Status.FAILED_TO_COMPENSATE
             ).contains(participant.status.get())) {
-                allFinished = participant.sendForget(this);
+                allFinished = participant.sendForget(this) && allFinished;
             }
         }
         return allFinished;
@@ -248,15 +252,6 @@ public class LRA {
         return allSent;
     }
 
-    boolean sendForget() {
-        boolean allDone = true;
-        for (Participant participant : participants) {
-            if (participant.getForgetURI().isEmpty() || participant.isForgotten()) continue;
-            allDone = participant.sendForget(this) && allDone;
-        }
-        return allDone;
-    }
-
     public boolean isReadyToDelete() {
         return whenReadyToDelete != 0 && whenReadyToDelete < System.currentTimeMillis();
     }
@@ -291,6 +286,11 @@ public class LRA {
                 .add("parentId=" + parentId)
                 .add("parent=" + parent)
                 .add("status=" + status)
+                .add("isCancel=" + isCancel)
+                .add("isRoot=" + isRoot)
+                .add("isParent=" + isParent)
+                .add("isChild=" + isChild)
+                .add("whenReadyToDelete=" + whenReadyToDelete)
                 .toString();
     }
 }

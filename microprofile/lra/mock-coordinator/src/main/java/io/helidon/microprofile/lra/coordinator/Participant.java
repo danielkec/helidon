@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.StringJoiner;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -468,4 +469,16 @@ public class Participant {
         return false;
     }
 
+    @Override
+    public String toString() {
+        return new StringJoiner(", ", Participant.class.getSimpleName() + "[", "]")
+                .add("compensateCalled=" + compensateCalled)
+                .add("forgetCalled=" + forgetCalled)
+                .add("afterLRACalled=" + afterLRACalled)
+                .add("sendingStatus=" + sendingStatus)
+                .add("remainingCloseAttempts=" + remainingCloseAttempts)
+                .add("remainingAfterLraAttempts=" + remainingAfterLraAttempts)
+                .add("status=" + status)
+                .toString();
+    }
 }

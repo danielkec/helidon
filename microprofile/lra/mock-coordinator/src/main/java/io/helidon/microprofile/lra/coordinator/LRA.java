@@ -198,7 +198,11 @@ public class LRA {
         boolean allFinished = true;
         for (Participant participant : participants) {
             if (participant.getForgetURI().isEmpty() || participant.isForgotten()) continue;
-            if (Set.of(Participant.Status.COMPLETED, Participant.Status.FAILED_TO_COMPLETE).contains(participant.status.get())) {
+            if (Set.of(
+                    Participant.Status.COMPLETED,
+                    Participant.Status.FAILED_TO_COMPLETE,
+                    Participant.Status.FAILED_TO_COMPENSATE
+            ).contains(participant.status.get())) {
                 allFinished = participant.sendForget(this);
             }
         }

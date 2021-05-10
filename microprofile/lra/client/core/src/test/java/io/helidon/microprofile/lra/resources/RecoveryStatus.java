@@ -59,14 +59,14 @@ public class RecoveryStatus {
     @Path(PATH_START_LRA)
     @LRA(value = LRA.Type.REQUIRES_NEW)
     public Response startCompensateLRA(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
-                                       @HeaderParam(LRA_HTTP_RECOVERY_HEADER) URI recoveryId,
+                                       @HeaderParam(LRA_HTTP_RECOVERY_HEADER) String recoveryId,
                                        ParticipantStatus reportStatus) {
         basicTest.getCompletable(CS_START_LRA, lraId).complete(lraId);
         basicTest.getCompletable(CS_EXPECTED_STATUS, lraId).complete(reportStatus);
         // Force to compensate
         return Response.serverError()
                 .header(LRA_HTTP_CONTEXT_HEADER, lraId.toASCIIString())
-                .header(LRA_HTTP_RECOVERY_HEADER, recoveryId.toASCIIString())
+                .header(LRA_HTTP_RECOVERY_HEADER, recoveryId)
                 .build();
     }
 

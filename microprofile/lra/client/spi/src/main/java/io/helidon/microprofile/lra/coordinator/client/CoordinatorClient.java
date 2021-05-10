@@ -18,6 +18,7 @@
 package io.helidon.microprofile.lra.coordinator.client;
 
 import java.net.URI;
+import java.util.Optional;
 
 import javax.ws.rs.WebApplicationException;
 
@@ -40,7 +41,7 @@ public interface CoordinatorClient {
      */
     URI start(URI parentLRA, String clientID, Long timeout) throws WebApplicationException;
 
-    URI join(URI lraId, Long timeLimit, Participant participant) throws WebApplicationException;
+    Optional<URI> join(URI lraId, Long timeLimit, Participant participant) throws WebApplicationException;
 
     void cancel(URI lraId) throws WebApplicationException;
 

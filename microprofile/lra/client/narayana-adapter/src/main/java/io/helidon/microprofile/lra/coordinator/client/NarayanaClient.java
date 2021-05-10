@@ -19,6 +19,7 @@ import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -41,6 +42,7 @@ import javax.ws.rs.core.UriBuilder;
 
 import static javax.ws.rs.core.Response.Status.GONE;
 import static javax.ws.rs.core.Response.Status.PRECONDITION_FAILED;
+import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVERY_HEADER;
 
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -93,7 +95,13 @@ public class NarayanaClient implements CoordinatorClient {
                 throw new WebApplicationException("Unexpected response " + response.getStatus() + " from coordinator "
                         + (response.hasEntity() ? response.readEntity(String.class) : ""));
             }
-            return NarayanaLRAId.parseLRAId(response.getHeaderString(HttpHeaders.LOCATION));
+            // TRM doesn't send lraId as LOCATION
+            String lraId = response.getHeaderString(HttpHeaders.LOCATION);
+            if(lraId == null || lraId.isEmpty()){
+                lraId = response.getHeaderString(LRA_HTTP_CONTEXT_HEADER);
+            }
+            Objects.requireNonNull(lraId, "Coordinator needs to return lraId either as 'Location' or 'Long-Running-Action' header.");
+            return NarayanaLRAId.parseLRAId(lraId);
         } catch (InterruptedException | ExecutionException | TimeoutException e) {
             throw new WebApplicationException("Unable to start LRA", e);
         }
@@ -150,7 +158,7 @@ public class NarayanaClient implements CoordinatorClient {
     }
 
     @Override
-    public URI join(URI lraId,
+    public Optional<URI> join(URI lraId,
                     Long timeLimit,
                     Participant participant) throws WebApplicationException {
         try {
@@ -175,9 +183,9 @@ public class NarayanaClient implements CoordinatorClient {
                 case 200:
                     String recoveryHeader = response.getHeaderString(LRA_HTTP_RECOVERY_HEADER);
                     if (recoveryHeader != null && !recoveryHeader.isEmpty()) {
-                        return UriBuilder.fromPath(recoveryHeader).build();
+                        return Optional.of(UriBuilder.fromPath(recoveryHeader).build());
                     }
-                    return null;
+                    return Optional.empty();
                 default:
                     throw new WebApplicationException("Can't join LRA " + lraId, response.getStatus());
             }

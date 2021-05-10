@@ -63,12 +63,12 @@ public class Recovery {
     @Path(Recovery.PATH_START_COMPENSATE_LRA)
     @LRA(value = LRA.Type.REQUIRES_NEW, timeLimit = 500, timeUnit = ChronoUnit.MILLIS)
     public Response startCompensateLRA(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
-                                       @HeaderParam(LRA_HTTP_RECOVERY_HEADER) URI recoveryId) {
+                                       @HeaderParam(LRA_HTTP_RECOVERY_HEADER) String recoveryId) {
         basicTest.getCompletable(CS_START_COMPENSATE_LRA).complete(lraId);
         // Force to compensate
         return Response.serverError()
                 .header(LRA_HTTP_CONTEXT_HEADER, lraId.toASCIIString())
-                .header(LRA_HTTP_RECOVERY_HEADER, recoveryId.toASCIIString())
+                .header(LRA_HTTP_RECOVERY_HEADER, recoveryId)
                 .build();
     }
 
@@ -76,11 +76,11 @@ public class Recovery {
     @Path(Recovery.PATH_START_COMPLETE_LRA)
     @LRA(value = LRA.Type.REQUIRES_NEW, timeLimit = 500, timeUnit = ChronoUnit.MILLIS)
     public Response startCompleteLRA(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
-                                     @HeaderParam(LRA_HTTP_RECOVERY_HEADER) URI recoveryId) {
+                                     @HeaderParam(LRA_HTTP_RECOVERY_HEADER) String recoveryId) {
         basicTest.getCompletable(CS_START_COMPLETE_LRA).complete(lraId);
         return Response.ok()
                 .header(LRA_HTTP_CONTEXT_HEADER, lraId.toASCIIString())
-                .header(LRA_HTTP_RECOVERY_HEADER, recoveryId.toASCIIString())
+                .header(LRA_HTTP_RECOVERY_HEADER, recoveryId)
                 .build();
     }
 

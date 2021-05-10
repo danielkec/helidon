@@ -22,10 +22,16 @@ import java.util.Set;
 import javax.enterprise.context.ApplicationScoped;
 import javax.ws.rs.core.Application;
 
+import io.helidon.microprofile.server.Server;
+
 @ApplicationScoped
 public class ExampleApp extends Application {
     @Override
     public Set<Class<?>> getClasses() {
         return Set.of(LRAExampleResource.class);
+    }
+
+    public static void main(String[] args) {
+        Server.create().start();
     }
 }

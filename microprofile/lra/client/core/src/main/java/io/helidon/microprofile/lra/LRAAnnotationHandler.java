@@ -71,12 +71,14 @@ class LRAAnnotationHandler implements AnnotationHandler {
                     parentLraId = existingLraId.get();
                     reqCtx.getHeaders().putSingle(LRA_HTTP_PARENT_CONTEXT_HEADER, existingLraId.get().toASCIIString());
                     lraId = coordinatorClient.start(existingLraId.get(), method.getDeclaringClass().getName() + "#" + method.getName(), timeLimit);
-                    URI recoveryUri = coordinatorClient.join(lraId, timeLimit, participant);
-                    reqCtx.getHeaders().add(LRA_HTTP_RECOVERY_HEADER, recoveryUri.toASCIIString());
+                    coordinatorClient.join(lraId, timeLimit, participant)
+                            .map(URI::toASCIIString)
+                            .ifPresent(uri -> reqCtx.getHeaders().add(LRA_HTTP_RECOVERY_HEADER, uri));
                 } else {
                     lraId = coordinatorClient.start(null, method.getDeclaringClass().getName() + "#" + method.getName(), timeLimit);
-                    URI recoveryUri = coordinatorClient.join(lraId, timeLimit, participant);
-                    reqCtx.getHeaders().add(LRA_HTTP_RECOVERY_HEADER, recoveryUri.toASCIIString());
+                    coordinatorClient.join(lraId, timeLimit, participant)
+                            .map(URI::toASCIIString)
+                            .ifPresent(uri -> reqCtx.getHeaders().add(LRA_HTTP_RECOVERY_HEADER, uri));
                 }
                 break;
             case NEVER:
@@ -92,8 +94,9 @@ class LRAAnnotationHandler implements AnnotationHandler {
                 return;
             case SUPPORTS:
                 if (existingLraId.isPresent()) {
-                    URI recoveryUri = coordinatorClient.join(existingLraId.get(), timeLimit, participant);
-                    reqCtx.getHeaders().add(LRA_HTTP_RECOVERY_HEADER, recoveryUri.toASCIIString());
+                    coordinatorClient.join(existingLraId.get(), timeLimit, participant)
+                            .map(URI::toASCIIString)
+                            .ifPresent(uri -> reqCtx.getHeaders().add(LRA_HTTP_RECOVERY_HEADER, uri));
                     lraId = existingLraId.get();
                     break;
                 }
@@ -108,16 +111,18 @@ class LRAAnnotationHandler implements AnnotationHandler {
                 // existing lra, fall thru to required
             case REQUIRED:
                 if (existingLraId.isPresent()) {
-                    URI recoveryUri = coordinatorClient.join(existingLraId.get(), timeLimit, participant);
-                    reqCtx.getHeaders().add(LRA_HTTP_RECOVERY_HEADER, recoveryUri.toASCIIString());
+                    coordinatorClient.join(existingLraId.get(), timeLimit, participant)
+                            .map(URI::toASCIIString)
+                            .ifPresent(uri -> reqCtx.getHeaders().add(LRA_HTTP_RECOVERY_HEADER, uri));
                     lraId = existingLraId.get();
                     break;
                 }
                 // non existing lra, fall thru to requires_new
             case REQUIRES_NEW:
                 lraId = coordinatorClient.start(null, method.getDeclaringClass().getName() + "#" + method.getName(), timeLimit);
-                URI recoveryUri = coordinatorClient.join(lraId, timeLimit, participant);
-                reqCtx.getHeaders().add(LRA_HTTP_RECOVERY_HEADER, recoveryUri.toASCIIString());
+                coordinatorClient.join(lraId, timeLimit, participant)
+                        .map(URI::toASCIIString)
+                        .ifPresent(uri -> reqCtx.getHeaders().add(LRA_HTTP_RECOVERY_HEADER, uri));
                 break;
             default:
                 LOGGER.severe("Unsupported LRA type " + annotation.value() + " on method " + method.getName());
@@ -128,7 +133,7 @@ class LRAAnnotationHandler implements AnnotationHandler {
             reqCtx.getHeaders().putSingle(LRA_HTTP_CONTEXT_HEADER, lraId.toASCIIString());
             LRAThreadContext.get().lra(lraId);
             reqCtx.setProperty(LRA_HTTP_CONTEXT_HEADER, lraId);
-        }  
+        }
         if (parentLraId != null) {
             reqCtx.getHeaders().putSingle(LRA_HTTP_PARENT_CONTEXT_HEADER, parentLraId.toASCIIString());
             reqCtx.setProperty(LRA_HTTP_PARENT_CONTEXT_HEADER, parentLraId);

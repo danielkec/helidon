@@ -24,11 +24,11 @@ import javax.ws.rs.container.ResourceInfo;
 class NoopAnnotationHandler implements AnnotationHandler {
 
     @Override
-    public void handleJaxrsBefore(ContainerRequestContext requestContext, ResourceInfo resourceInfo) {
+    public void handleJaxRsBefore(ContainerRequestContext requestContext, ResourceInfo resourceInfo) {
     }
 
     @Override
-    public void handleJaxrsAfter(final ContainerRequestContext requestContext,
+    public void handleJaxRsAfter(final ContainerRequestContext requestContext,
                                  ContainerResponseContext responseContext,
                                  ResourceInfo resourceInfo) {
     }

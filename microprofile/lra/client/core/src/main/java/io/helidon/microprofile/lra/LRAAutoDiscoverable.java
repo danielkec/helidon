@@ -17,12 +17,12 @@ package io.helidon.microprofile.lra;
 
 import org.glassfish.jersey.internal.spi.AutoDiscoverable;
 
-public class LRAAutoDiscoverable implements AutoDiscoverable {
+class LRAAutoDiscoverable implements AutoDiscoverable {
 
     @Override
     public void configure(javax.ws.rs.core.FeatureContext ctx) {
-        ctx.register(JaxrsServerFilter.class)
-                .register(JaxrsClientFilter.class)
+        ctx.register(JaxRsServerFilter.class)
+                .register(JaxRsClientFilter.class)
                 .register(StatusBodyMapper.class);
     }
 }

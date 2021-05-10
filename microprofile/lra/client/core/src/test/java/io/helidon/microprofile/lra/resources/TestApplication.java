@@ -31,7 +31,7 @@ public class TestApplication extends Application {
         return Set.of(
                 CdiCompleteOrCompensate.class,
                 StartAndAfter.class,
-                JaxrsCompleteOrCompensate.class,
+                JaxRsCompleteOrCompensate.class,
                 DontEnd.class,
                 Timeout.class,
                 Recovery.class,

@@ -85,10 +85,10 @@ interface AnnotationHandler {
                 .collect(Collectors.toList());
     }
 
-    void handleJaxrsBefore(ContainerRequestContext requestContext,
+    void handleJaxRsBefore(ContainerRequestContext requestContext,
                            ResourceInfo resourceInfo);
 
-    void handleJaxrsAfter(ContainerRequestContext requestContext,
+    void handleJaxRsAfter(ContainerRequestContext requestContext,
                           ContainerResponseContext responseContext,
                           ResourceInfo resourceInfo);
 

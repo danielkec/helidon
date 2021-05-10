@@ -26,7 +26,7 @@ import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT
 
 class NoAnnotationHandler implements AnnotationHandler {
     @Override
-    public void handleJaxrsBefore(ContainerRequestContext requestContext,
+    public void handleJaxRsBefore(ContainerRequestContext requestContext,
                                   ResourceInfo resourceInfo) {
         // Skip internal resource
         if(resourceInfo.getResourceClass() == ParticipantCdiResource.class)return;
@@ -47,7 +47,7 @@ class NoAnnotationHandler implements AnnotationHandler {
     }
 
     @Override
-    public void handleJaxrsAfter(ContainerRequestContext requestContext,
+    public void handleJaxRsAfter(ContainerRequestContext requestContext,
                                  ContainerResponseContext responseContext,
                                  ResourceInfo resourceInfo) {
 

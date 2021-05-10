@@ -39,9 +39,9 @@ import io.helidon.microprofile.lra.coordinator.client.CoordinatorResourceAdapter
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
 
 @ConstrainedTo(RuntimeType.SERVER)
-public class JaxrsServerFilter implements ContainerRequestFilter, ContainerResponseFilter {
+public class JaxRsServerFilter implements ContainerRequestFilter, ContainerResponseFilter {
 
-    private static final Logger LOGGER = Logger.getLogger(JaxrsServerFilter.class.getName());
+    private static final Logger LOGGER = Logger.getLogger(JaxRsServerFilter.class.getName());
 
     @Context
     protected ResourceInfo resourceInfo;
@@ -73,7 +73,7 @@ public class JaxrsServerFilter implements ContainerRequestFilter, ContainerRespo
 
             // select current lra annotation handler and process
             for (AnnotationHandler handler : AnnotationHandler.create(method, inspectionService, coordinatorClient, participantService)) {
-                handler.handleJaxrsBefore(requestContext, resourceInfo);
+                handler.handleJaxRsBefore(requestContext, resourceInfo);
             }
         } catch (WebApplicationException e) {
             // Rethrow error responses
@@ -97,7 +97,7 @@ public class JaxrsServerFilter implements ContainerRequestFilter, ContainerRespo
 
             // select current lra annotation handler and process
             for (AnnotationHandler handler : AnnotationHandler.create(method, inspectionService, coordinatorClient, participantService)) {
-                handler.handleJaxrsAfter(requestContext, responseContext, resourceInfo);
+                handler.handleJaxRsAfter(requestContext, responseContext, resourceInfo);
             }
 
             // Clean up

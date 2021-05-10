@@ -52,7 +52,7 @@ import org.jboss.jandex.MethodInfo;
 import org.jboss.jandex.Type;
 
 @ApplicationScoped
-public class InspectionService {
+class InspectionService {
 
     private final IndexView index;
     static final DotName LRA = DotName.createSimple(LRA.class.getName());
@@ -65,14 +65,14 @@ public class InspectionService {
     static final Set<DotName> LRA_ANNOTATIONS = Set.of(LRA, LEAVE, AFTER_LRA, COMPLETE, COMPENSATE, FORGET, STATUS);
 
     @Inject
-    public InspectionService(LRACdiExtension lraCdiExtension) {
+    InspectionService(LRACdiExtension lraCdiExtension) {
         this.index = lraCdiExtension.getIndex();
     }
 
     /**
      * Resolve all methods with LRA annotations directly on methods or inherited from interfaces, parents of enclosing classes.
      */
-    public Map<MethodInfo, Set<AnnotationInstance>> lookUpLraMethods(ClassInfo classInfo) {
+    Map<MethodInfo, Set<AnnotationInstance>> lookUpLraMethods(ClassInfo classInfo) {
         Map<MethodInfo, Set<AnnotationInstance>> result = new HashMap<>();
         List<ClassInfo> classHierarchy = getAllParents(classInfo);
         classHierarchy.add(0, classInfo);
@@ -123,7 +123,7 @@ public class InspectionService {
                 .collect(Collectors.toSet());
     }
 
-    public Set<AnnotationInstance> lookUpLraAnnotations(Method method) {
+    Set<AnnotationInstance> lookUpLraAnnotations(Method method) {
         ClassInfo declaringClazz = index.getClassByName(DotName.createSimple(method.getDeclaringClass().getName()));
         if (declaringClazz == null) {
             throw new DeploymentException("Can't find indexed declaring class of method " + method);
@@ -141,7 +141,7 @@ public class InspectionService {
         return lookUpLraAnnotations(methodInfo);
     }
 
-    public Set<AnnotationInstance> lookUpLraAnnotations(MethodInfo methodInfo) {
+    Set<AnnotationInstance> lookUpLraAnnotations(MethodInfo methodInfo) {
         Map<String, AnnotationInstance> annotations = new HashMap<>();
         deepScanLraMethod(methodInfo.declaringClass(), annotations, methodInfo.name(), methodInfo.parameters().toArray(new Type[0]));
         HashSet<AnnotationInstance> result = new HashSet<>(annotations.values());
@@ -166,7 +166,7 @@ public class InspectionService {
         return result;
     }
 
-    public IndexView index() {
+    IndexView index() {
         return index;
     }
 

@@ -34,8 +34,8 @@ import io.helidon.microprofile.lra.BasicTest;
 
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
 
-@Path(JaxrsCompleteOrCompensate.PATH_BASE)
-public class JaxrsCompleteOrCompensate {
+@Path(JaxRsCompleteOrCompensate.PATH_BASE)
+public class JaxRsCompleteOrCompensate {
 
     public static final String PATH_BASE = "jaxrs-complete-cancel";
     public static final String PATH_START_LRA = "start";

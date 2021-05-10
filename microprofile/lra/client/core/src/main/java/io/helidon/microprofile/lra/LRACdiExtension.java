@@ -24,6 +24,7 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -33,6 +34,7 @@ import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import javax.annotation.Priority;
 import javax.enterprise.context.ApplicationScoped;
@@ -130,35 +132,49 @@ public class LRACdiExtension implements Extension {
         runtimeIndex(DotName.createSimple(pat.getAnnotatedType().getJavaClass().getName()));
     }
 
-    private void validate(@Observes
-                          @WithAnnotations(
-                                  {
-                                          Complete.class,
-                                          Compensate.class,
-                                          Forget.class,
-                                          AfterLRA.class
-                                  })
-                                  ProcessAnnotatedType<?> pat) {
-        Set<Class<? extends Annotation>> expected = Set.of(AfterLRA.class, Complete.class, Compensate.class, Forget.class);
-        Set<Class<? extends Annotation>> excluded = Set.of(PUT.class, Path.class);
+    static final Set<Class<? extends Annotation>> EXPECTED_ANNOTATIONS = Set.of(
+            AfterLRA.class,
+            Complete.class,
+            Compensate.class,
+            Forget.class
+    );
+    static final Set<Class<? extends Annotation>> EXCLUDED_ANNOTATIONS = Set.of(PUT.class, Path.class);
+
+    Set<Class<?>> beanTypesWithCdiLRAMethods = new HashSet<>();
+    
+    private void validateCdiLRASignatures(@Observes
+                                          @WithAnnotations(
+                                                  {
+                                                          Complete.class,
+                                                          Compensate.class,
+                                                          Forget.class,
+                                                          AfterLRA.class,
+                                                          Status.class
+                                                  })
+                                                  ProcessAnnotatedType<?> pat) {
         AnnotatedType<?> annotatedType = pat.getAnnotatedType();
+        beanTypesWithCdiLRAMethods.add(annotatedType.getJavaClass());
         annotatedType.getMethods().stream()
-                .filter(m -> m.getAnnotations().stream().map(Annotation::annotationType).anyMatch(expected::contains))
-                .filter(m -> m.getAnnotations().stream().map(Annotation::annotationType).noneMatch(excluded::contains))
+                .filter(m -> m.getAnnotations().stream().map(Annotation::annotationType).anyMatch(EXPECTED_ANNOTATIONS::contains))
+                .filter(m -> m.getAnnotations().stream().map(Annotation::annotationType).noneMatch(EXCLUDED_ANNOTATIONS::contains))
                 .forEach(m -> {
                     List<? extends AnnotatedParameter<?>> parameters = m.getParameters();
                     if (parameters.size() > 2) {
-                        throw new DeploymentException("Too many arguments on compensate method " + m.getJavaMember());
+                        throw new DeploymentException("Too many arguments on compensate method "
+                                + m.getJavaMember());
                     }
                     if (parameters.size() == 1 && !parameters.get(0).getBaseType().equals(URI.class)) {
-                        throw new DeploymentException("First argument of LRA method " + m.getJavaMember() + " must be of type URI");
+                        throw new DeploymentException("First argument of LRA method "
+                                + m.getJavaMember() + " must be of type URI");
                     }
                     if (parameters.size() == 2) {
                         if (!parameters.get(0).getBaseType().equals(URI.class)) {
-                            throw new DeploymentException("First argument of LRA method " + m.getJavaMember() + " must be of type URI");
+                            throw new DeploymentException("First argument of LRA method "
+                                    + m.getJavaMember() + " must be of type URI");
                         }
                         if (!Set.of(URI.class, LRAStatus.class).contains(parameters.get(1).getBaseType())) {
-                            throw new DeploymentException("Second argument of LRA method " + m.getJavaMember() + " must be of type URI");
+                            throw new DeploymentException("Second argument of LRA method "
+                                    + m.getJavaMember() + " must be of type URI or LRAStatus");
                         }
                     }
                 });
@@ -188,8 +204,9 @@ public class LRACdiExtension implements Extension {
     private final Map<Class<?>, Bean<?>> lraCdiBeanReferences = new HashMap<>();
 
     private void cdiLRABeanReferences(@Observes ProcessManagedBean<?> event) {
-        //TODO: limit only to beans with Complete/Compensate/Status lra cdi methods
-        lraCdiBeanReferences.put(event.getBean().getBeanClass(), event.getBean());
+        if(beanTypesWithCdiLRAMethods.contains(event.getBean().getBeanClass())){
+            lraCdiBeanReferences.put(event.getBean().getBeanClass(), event.getBean());
+        }
     }
 
     private void ready(
@@ -234,15 +251,16 @@ public class LRACdiExtension implements Extension {
 
 
             //allowed return types for compensate and afterLra
-            Set<DotName> returnTypes = Set.of(
+            Set<DotName> returnTypes = Stream.of(
                     Response.class,
                     ParticipantStatus.class,
                     CompletionStage.class,
                     void.class
-            ).stream()
+            )
                     .map(Class::getName)
                     .map(DotName::createSimple)
                     .collect(Collectors.toSet());
+
             lraMethods.forEach((m, a) -> {
                 if (a.stream().map(AnnotationInstance::name).anyMatch(InspectionService.COMPENSATE::equals)) {
                     if (!returnTypes.contains(m.returnType().name())) {

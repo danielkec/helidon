@@ -29,7 +29,7 @@ import javax.ws.rs.client.ClientRequestFilter;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
 
 @ConstrainedTo(RuntimeType.CLIENT)
-public class JaxrsClientFilter implements ClientRequestFilter {
+public class JaxRsClientFilter implements ClientRequestFilter {
     @Override
     public void filter(final ClientRequestContext requestContext) throws IOException {
         Optional<URI> lraId = LRAThreadContext.get().lra();

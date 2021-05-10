@@ -51,7 +51,7 @@ import io.helidon.microprofile.lra.resources.CdiNestedCompleteOrCompensate;
 import io.helidon.microprofile.lra.resources.CommonAfter;
 import io.helidon.microprofile.lra.resources.DontEnd;
 import io.helidon.microprofile.lra.resources.JaxRsNestedCompleteOrCompensate;
-import io.helidon.microprofile.lra.resources.JaxrsCompleteOrCompensate;
+import io.helidon.microprofile.lra.resources.JaxRsCompleteOrCompensate;
 import io.helidon.microprofile.lra.resources.Recovery;
 import io.helidon.microprofile.lra.resources.RecoveryStatus;
 import io.helidon.microprofile.lra.resources.StartAndAfter;
@@ -103,7 +103,7 @@ import org.junit.jupiter.api.Test;
 @AddBean(NarayanaResourceAdapter.class)
 // Test resources
 @AddBean(TestApplication.class)
-@AddBean(JaxrsCompleteOrCompensate.class)
+@AddBean(JaxRsCompleteOrCompensate.class)
 @AddBean(CdiCompleteOrCompensate.class)
 @AddBean(StartAndAfter.class)
 @AddBean(DontEnd.class)
@@ -167,33 +167,33 @@ public class BasicTest {
     }
 
     @Test
-    void jaxrsComplete(WebTarget target) throws Exception {
-        Response response = target.path(JaxrsCompleteOrCompensate.PATH_BASE)
-                .path(JaxrsCompleteOrCompensate.PATH_START_LRA)
+    void jaxRsComplete(WebTarget target) throws Exception {
+        Response response = target.path(JaxRsCompleteOrCompensate.PATH_BASE)
+                .path(JaxRsCompleteOrCompensate.PATH_START_LRA)
                 .request()
                 .header(Work.HEADER_KEY, Work.NOOP)
                 .async()
                 .put(Entity.text(""))
                 .get(TIMEOUT_SEC, TimeUnit.SECONDS);
         assertThat(response.getStatus(), AnyOf.anyOf(is(200), is(204)));
-        URI lraId = await(JaxrsCompleteOrCompensate.CS_START_LRA);
-        assertThat(await(JaxrsCompleteOrCompensate.CS_COMPLETE), is(lraId));
-        assertFalse(getCompletable(JaxrsCompleteOrCompensate.CS_COMPENSATE).isDone());
+        URI lraId = await(JaxRsCompleteOrCompensate.CS_START_LRA);
+        assertThat(await(JaxRsCompleteOrCompensate.CS_COMPLETE), is(lraId));
+        assertFalse(getCompletable(JaxRsCompleteOrCompensate.CS_COMPENSATE).isDone());
     }
 
     @Test
-    void jaxrsCompensate(WebTarget target) throws Exception {
-        Response response = target.path(JaxrsCompleteOrCompensate.PATH_BASE)
-                .path(JaxrsCompleteOrCompensate.PATH_START_LRA)
+    void jaxRsCompensate(WebTarget target) throws Exception {
+        Response response = target.path(JaxRsCompleteOrCompensate.PATH_BASE)
+                .path(JaxRsCompleteOrCompensate.PATH_START_LRA)
                 .request()
                 .header(Work.HEADER_KEY, Work.BOOM)
                 .async()
                 .put(Entity.text(""))
                 .get(TIMEOUT_SEC, TimeUnit.SECONDS);
         assertThat(response.getStatus(), is(500));
-        URI lraId = await(JaxrsCompleteOrCompensate.CS_START_LRA);
-        assertThat(await(JaxrsCompleteOrCompensate.CS_COMPENSATE), is(lraId));
-        assertFalse(getCompletable(JaxrsCompleteOrCompensate.CS_COMPLETE).isDone());
+        URI lraId = await(JaxRsCompleteOrCompensate.CS_START_LRA);
+        assertThat(await(JaxRsCompleteOrCompensate.CS_COMPENSATE), is(lraId));
+        assertFalse(getCompletable(JaxRsCompleteOrCompensate.CS_COMPLETE).isDone());
     }
 
     @Test

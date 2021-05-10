@@ -56,7 +56,7 @@ class LRAAnnotationHandler implements AnnotationHandler {
     }
 
     @Override
-    public void handleJaxrsBefore(ContainerRequestContext reqCtx, ResourceInfo resourceInfo) {
+    public void handleJaxRsBefore(ContainerRequestContext reqCtx, ResourceInfo resourceInfo) {
         var method = resourceInfo.getResourceMethod();
         var baseUri = reqCtx.getUriInfo().getBaseUri();
         var participant = participantService.participant(baseUri, resourceInfo.getResourceClass());
@@ -141,7 +141,7 @@ class LRAAnnotationHandler implements AnnotationHandler {
     }
 
     @Override
-    public void handleJaxrsAfter(ContainerRequestContext requestContext,
+    public void handleJaxRsAfter(ContainerRequestContext requestContext,
                                  ContainerResponseContext responseContext,
                                  ResourceInfo resourceInfo) {
         Optional<URI> lraId = Optional.ofNullable((URI) requestContext.getProperty(LRA_HTTP_CONTEXT_HEADER))

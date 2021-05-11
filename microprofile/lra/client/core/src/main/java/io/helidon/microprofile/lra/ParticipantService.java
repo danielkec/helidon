@@ -32,7 +32,7 @@ import javax.inject.Inject;
 import io.helidon.microprofile.lra.coordinator.client.Participant;
 
 @ApplicationScoped
-public class ParticipantService {
+class ParticipantService {
 
     @Inject
     private LRACdiExtension lraCdiExtension;

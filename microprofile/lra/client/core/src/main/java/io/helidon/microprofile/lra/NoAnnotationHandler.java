@@ -29,8 +29,8 @@ class NoAnnotationHandler implements AnnotationHandler {
     public void handleJaxRsBefore(ContainerRequestContext requestContext,
                                   ResourceInfo resourceInfo) {
         // Skip internal resource
-        if(resourceInfo.getResourceClass() == ParticipantCdiResource.class)return;
-        
+        if (resourceInfo.getResourceClass() == ParticipantCdiResource.class) return;
+
         // not LRA method at all, clear lra header
         String lraFromHeader = requestContext.getHeaders().getFirst(LRA_HTTP_CONTEXT_HEADER);
         requestContext.getHeaders().remove(LRA_HTTP_CONTEXT_HEADER);
@@ -39,7 +39,7 @@ class NoAnnotationHandler implements AnnotationHandler {
 
         if (existingLraId.isPresent()) {
             // Propagate thread bound lraId for after handler
-            existingLraId.ifPresent(uri -> requestContext.setProperty(LRA_HTTP_CONTEXT_HEADER, existingLraId.get().toASCIIString()));
+            existingLraId.ifPresent(uri -> requestContext.setProperty(LRA_HTTP_CONTEXT_HEADER, uri.toASCIIString()));
         } else if (lraFromHeader != null) {
             // Save lraId from header to thread local for possible clients
             LRAThreadContext.get().lra(UriBuilder.fromPath(lraFromHeader).build());

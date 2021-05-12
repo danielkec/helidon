@@ -43,9 +43,8 @@ import io.helidon.common.reactive.Single;
 import io.helidon.microprofile.config.ConfigCdiExtension;
 import io.helidon.microprofile.lra.coordinator.Coordinator;
 import io.helidon.microprofile.lra.coordinator.CoordinatorApplication;
-import io.helidon.microprofile.lra.coordinator.client.CoordinatorClient;
-import io.helidon.microprofile.lra.coordinator.client.NarayanaClient;
-import io.helidon.microprofile.lra.coordinator.client.NarayanaResourceAdapter;
+import io.helidon.microprofile.lra.coordinator.client.narayana.CoordinatorClient;
+import io.helidon.microprofile.lra.coordinator.client.narayana.NarayanaClient;
 import io.helidon.microprofile.lra.resources.CdiCompleteOrCompensate;
 import io.helidon.microprofile.lra.resources.CdiNestedCompleteOrCompensate;
 import io.helidon.microprofile.lra.resources.CommonAfter;
@@ -100,7 +99,6 @@ import org.junit.jupiter.api.Test;
 @AddConfig(key = CoordinatorClient.CONF_KEY_COORDINATOR_URL, value = "http://localhost:8070/lra-coordinator")
 // Coordinator flavor
 @AddBean(NarayanaClient.class)
-@AddBean(NarayanaResourceAdapter.class)
 // Test resources
 @AddBean(TestApplication.class)
 @AddBean(JaxRsCompleteOrCompensate.class)

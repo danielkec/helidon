@@ -29,7 +29,7 @@ import javax.enterprise.inject.spi.Bean;
 import javax.enterprise.inject.spi.BeanManager;
 import javax.inject.Inject;
 
-import io.helidon.microprofile.lra.coordinator.client.Participant;
+import io.helidon.microprofile.lra.coordinator.client.narayana.Participant;
 
 @ApplicationScoped
 class ParticipantService {
@@ -38,16 +38,16 @@ class ParticipantService {
     private LRACdiExtension lraCdiExtension;
 
     @Inject
-    BeanManager beanManager;
+    private BeanManager beanManager;
 
-    final Map<Class<?>, Participant> participants = new HashMap<>();
+    private final Map<Class<?>, Participant> participants = new HashMap<>();
 
     Participant participant(URI baseUri, Class<?> clazz) {
         return participants.computeIfAbsent(clazz, c -> new ParticipantImpl(baseUri, c));
     }
 
     /**
-     * Participant ID is expected to be classFqdn#methodName
+     * Participant ID is expected to be classFqdn#methodName.
      */
     Object invoke(String classFqdn, String methodName, URI lraId, Object secondParam) throws InvocationTargetException {
         Class<?> clazz;
@@ -61,7 +61,7 @@ class ParticipantService {
             Bean<?> bean = lraCdiExtension.lraCdiBeanReferences().get(clazz);
             Objects.requireNonNull(bean, () -> "Missing bean reference for participant method: " + classFqdn + "#" + methodName);
             Method method = Arrays.stream(clazz.getDeclaredMethods())
-                    .filter(m -> m.getName().equals(methodName)) //TODO: filter those with right annotation
+                    .filter(m -> m.getName().equals(methodName))
                     .findFirst()
                     .orElseThrow(() -> new RuntimeException("Cant find participant method " + methodName
                             + " with participant method: " + classFqdn + "#" + methodName));

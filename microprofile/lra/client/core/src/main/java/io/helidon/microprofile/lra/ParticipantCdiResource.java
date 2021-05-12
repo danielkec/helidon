@@ -39,33 +39,34 @@ import javax.ws.rs.core.UriBuilder;
 
 import io.helidon.common.reactive.Single;
 
-import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
-import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_ENDED_CONTEXT_HEADER;
-import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_PARENT_CONTEXT_HEADER;
-
 import org.eclipse.microprofile.lra.LRAResponse;
 import org.eclipse.microprofile.lra.annotation.LRAStatus;
 import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
 
+import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
+import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_ENDED_CONTEXT_HEADER;
+import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_PARENT_CONTEXT_HEADER;
+
 @ApplicationScoped
 @Path(ParticipantCdiResource.CDI_PARTICIPANT_PATH)
 public class ParticipantCdiResource {
-    
+
     static final String CDI_PARTICIPANT_PATH = "lra-client-cdi-resource";
     //http://127.0.0.1:43733/lra-client-cdi-methods/complete/io.helidon.microprofile.lra.TestApplication$StartAndCloseCdi/complete
 
     private static final Logger LOGGER = Logger.getLogger(ParticipantCdiResource.class.getName());
 
-    private static final Map<ParticipantStatus, Supplier<Response>> PARTICIPANT_RESPONSE_BUILDERS = 
+    private static final Map<ParticipantStatus, Supplier<Response>> PARTICIPANT_RESPONSE_BUILDERS =
             Map.of(
-                    ParticipantStatus.Compensating, () -> LRAResponse.compensating(ParticipantStatus.Compensating), 
+                    ParticipantStatus.Compensating, () -> LRAResponse.compensating(ParticipantStatus.Compensating),
                     ParticipantStatus.Compensated, () -> LRAResponse.compensated(ParticipantStatus.Compensated),
-                    ParticipantStatus.FailedToCompensate, () -> LRAResponse.failedToCompensate(ParticipantStatus.FailedToCompensate),
+                    ParticipantStatus.FailedToCompensate,
+                    () -> LRAResponse.failedToCompensate(ParticipantStatus.FailedToCompensate),
                     ParticipantStatus.Completing, () -> LRAResponse.compensating(ParticipantStatus.Completing),
                     ParticipantStatus.Completed, () -> LRAResponse.compensating(ParticipantStatus.Completed),
                     ParticipantStatus.FailedToComplete, () -> LRAResponse.failedToComplete(ParticipantStatus.FailedToComplete)
             );
-    
+
     @Inject
     private ParticipantService participantService;
 
@@ -134,8 +135,8 @@ public class ParticipantCdiResource {
         try {
             Object result = participantService.invoke(fqdn, methodName, UriBuilder.fromPath(lraId).build(), null);
             if (result == null) {
-                // If the participant has already responded successfully to an @Compensate or @Complete 
-                // method invocation then it MAY report 410 Gone HTTP status code 
+                // If the participant has already responded successfully to an @Compensate or @Complete
+                // method invocation then it MAY report 410 Gone HTTP status code
                 // or in the case of non-JAX-RS method returning ParticipantStatus null.
                 return Single.just(Response.status(Response.Status.GONE).build());
             }

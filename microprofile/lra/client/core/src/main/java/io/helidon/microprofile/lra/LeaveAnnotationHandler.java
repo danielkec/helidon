@@ -24,7 +24,7 @@ import javax.ws.rs.container.ContainerRequestContext;
 import javax.ws.rs.container.ContainerResponseContext;
 import javax.ws.rs.container.ResourceInfo;
 
-import io.helidon.microprofile.lra.coordinator.client.CoordinatorClient;
+import io.helidon.microprofile.lra.coordinator.client.narayana.CoordinatorClient;
 
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
 
@@ -33,7 +33,7 @@ class LeaveAnnotationHandler implements AnnotationHandler {
     private final CoordinatorClient coordinatorClient;
     private final ParticipantService participantService;
 
-    public LeaveAnnotationHandler(CoordinatorClient coordinatorClient, final ParticipantService participantService) {
+    LeaveAnnotationHandler(CoordinatorClient coordinatorClient, ParticipantService participantService) {
         this.coordinatorClient = coordinatorClient;
         this.participantService = participantService;
     }

@@ -134,7 +134,11 @@ class InspectionService {
         MethodInfo methodInfo = declaringClazz.methods().stream()
                 .filter(m -> m.name().equals(methodName))
                 .filter(m -> m.parameters().size() == parameterCount)
-                .filter(m -> m.parameters().stream().map(p -> p.name().toString()).collect(Collectors.joining()).equals(paramHash))
+                .filter(m -> m.parameters().stream()
+                        .map(p -> p.name().toString())
+                        .collect(Collectors.joining())
+                        .equals(paramHash)
+                )
                 .findFirst()
                 .orElseThrow(() -> new DeploymentException("LRA method " + method
                         + " not found indexed in class " + declaringClazz.name()));
@@ -143,7 +147,12 @@ class InspectionService {
 
     Set<AnnotationInstance> lookUpLraAnnotations(MethodInfo methodInfo) {
         Map<String, AnnotationInstance> annotations = new HashMap<>();
-        deepScanLraMethod(methodInfo.declaringClass(), annotations, methodInfo.name(), methodInfo.parameters().toArray(new Type[0]));
+        deepScanLraMethod(
+                methodInfo.declaringClass(),
+                annotations,
+                methodInfo.name(),
+                methodInfo.parameters().toArray(new Type[0])
+        );
         HashSet<AnnotationInstance> result = new HashSet<>(annotations.values());
 
         // Only LRA annotations concern us
@@ -192,7 +201,10 @@ class InspectionService {
         return null;
     }
 
-    void deepScanLraMethod(ClassInfo classInfo, Map<String, AnnotationInstance> annotations, String methodName, Type... parameters) {
+    void deepScanLraMethod(ClassInfo classInfo,
+                           Map<String, AnnotationInstance> annotations,
+                           String methodName,
+                           Type... parameters) {
         if (classInfo == null) return;
         // add only those not already present(overriding)
         MethodInfo method = classInfo.method(methodName, parameters);

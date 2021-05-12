@@ -20,29 +20,30 @@ package io.helidon.microprofile.lra;
 import java.net.URI;
 import java.util.Optional;
 
-public class LRAThreadContext {
-    static ThreadLocal<LRAThreadContext> threadLocal = new ThreadLocal<>();
+class LRAThreadContext {
+
+    private static final ThreadLocal<LRAThreadContext> LRA_THREAD_CONTEXT = new ThreadLocal<>();
 
     private URI lra;
 
     static synchronized LRAThreadContext get() {
-        LRAThreadContext instance = threadLocal.get();
+        LRAThreadContext instance = LRA_THREAD_CONTEXT.get();
         if (instance == null) {
             instance = new LRAThreadContext();
-            threadLocal.set(instance);
+            LRA_THREAD_CONTEXT.set(instance);
         }
         return instance;
     }
-    
-    public static void clear(){
-        threadLocal.set(null);
+
+    static void clear() {
+        LRA_THREAD_CONTEXT.set(null);
     }
 
-    public void lra(URI lra) {
+    void lra(URI lra) {
         this.lra = lra;
     }
 
-    public Optional<URI> lra() {
+    Optional<URI> lra() {
         return Optional.ofNullable(lra);
     }
 }

@@ -33,8 +33,7 @@ import javax.ws.rs.container.ResourceInfo;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.UriBuilder;
 
-import io.helidon.microprofile.lra.coordinator.client.CoordinatorClient;
-import io.helidon.microprofile.lra.coordinator.client.CoordinatorResourceAdapter;
+import io.helidon.microprofile.lra.coordinator.client.narayana.CoordinatorClient;
 
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
 
@@ -44,19 +43,16 @@ public class JaxRsServerFilter implements ContainerRequestFilter, ContainerRespo
     private static final Logger LOGGER = Logger.getLogger(JaxRsServerFilter.class.getName());
 
     @Context
-    protected ResourceInfo resourceInfo;
+    private ResourceInfo resourceInfo;
 
     @Inject
-    CoordinatorClient coordinatorClient;
+    private CoordinatorClient coordinatorClient;
 
     @Inject
-    CoordinatorResourceAdapter coordinatorResourceAdapter;
+    private InspectionService inspectionService;
 
     @Inject
-    InspectionService inspectionService;
-
-    @Inject
-    ParticipantService participantService;
+    private ParticipantService participantService;
 
     @Override
     public void filter(ContainerRequestContext requestContext) throws IOException {
@@ -68,11 +64,11 @@ public class JaxRsServerFilter implements ContainerRequestFilter, ContainerRespo
                     .map(h -> UriBuilder.fromPath(requestContext.getHeaders().getFirst(LRA_HTTP_CONTEXT_HEADER)).build())
                     .ifPresent(lraId -> LRAThreadContext.get().lra(lraId));
 
-            // Adapt JaxRs calls to specific coordinator
-            coordinatorResourceAdapter.handleJaxrsBefore(requestContext, resourceInfo);
+            // Adapt JaxRs calls from specific coordinator
+            coordinatorClient.handleJaxRsBefore(requestContext, resourceInfo);
 
             // select current lra annotation handler and process
-            for (AnnotationHandler handler : AnnotationHandler.create(method, inspectionService, coordinatorClient, participantService)) {
+            for (var handler : AnnotationHandler.create(method, inspectionService, coordinatorClient, participantService)) {
                 handler.handleJaxRsBefore(requestContext, resourceInfo);
             }
         } catch (WebApplicationException e) {
@@ -92,11 +88,11 @@ public class JaxRsServerFilter implements ContainerRequestFilter, ContainerRespo
                 return;
             }
 
-            // Adapt JaxRs calls to specific coordinator
-            coordinatorResourceAdapter.handleJaxrsAfter(requestContext, responseContext, resourceInfo);
+            // Adapt JaxRs calls from specific coordinator
+            coordinatorClient.handleJaxRsAfter(requestContext, responseContext, resourceInfo);
 
             // select current lra annotation handler and process
-            for (AnnotationHandler handler : AnnotationHandler.create(method, inspectionService, coordinatorClient, participantService)) {
+            for (var handler : AnnotationHandler.create(method, inspectionService, coordinatorClient, participantService)) {
                 handler.handleJaxRsAfter(requestContext, responseContext, resourceInfo);
             }
 

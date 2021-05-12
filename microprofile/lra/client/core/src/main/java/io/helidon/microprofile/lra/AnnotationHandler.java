@@ -28,7 +28,7 @@ import javax.ws.rs.container.ContainerRequestContext;
 import javax.ws.rs.container.ContainerResponseContext;
 import javax.ws.rs.container.ResourceInfo;
 
-import io.helidon.microprofile.lra.coordinator.client.CoordinatorClient;
+import io.helidon.microprofile.lra.coordinator.client.narayana.CoordinatorClient;
 
 import org.eclipse.microprofile.lra.annotation.AfterLRA;
 import org.eclipse.microprofile.lra.annotation.Complete;
@@ -58,13 +58,12 @@ interface AnnotationHandler {
             return List.of(new NoAnnotationHandler());
         }
 
-        //TODO: Rework priority of annotations
-        if(lraAnnotations.stream()
+        if (lraAnnotations.stream()
                 .map(a -> a.name().toString())
-                .anyMatch(Leave.class.getName()::equals)){
+                .anyMatch(Leave.class.getName()::equals)) {
             return List.of(new LeaveAnnotationHandler(coordinatorClient, participantService));
         }
-        
+
         if (lraAnnotations.stream()
                 .map(a -> a.name().toString())
                 .anyMatch(STAND_ALONE_ANNOTATIONS::contains)) {

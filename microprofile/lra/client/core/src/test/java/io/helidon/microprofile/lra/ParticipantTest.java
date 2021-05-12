@@ -23,7 +23,6 @@ import org.junit.jupiter.api.Test;
 
 import java.net.URI;
 
-import io.helidon.microprofile.lra.coordinator.client.Participant;
 import io.helidon.microprofile.lra.resources.DontEnd;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;

@@ -28,19 +28,17 @@ import javax.ws.rs.container.ContainerResponseContext;
 import javax.ws.rs.container.ResourceInfo;
 import javax.ws.rs.core.Response;
 
-import io.helidon.microprofile.lra.coordinator.client.CoordinatorClient;
+import io.helidon.microprofile.lra.coordinator.client.narayana.CoordinatorClient;
+
+import org.jboss.jandex.AnnotationInstance;
 
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_PARENT_CONTEXT_HEADER;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVERY_HEADER;
 
-import org.jboss.jandex.AnnotationInstance;
-
 class LRAAnnotationHandler implements AnnotationHandler {
 
     private static final Logger LOGGER = Logger.getLogger(LRAAnnotationHandler.class.getName());
-
-    public static final String PROP_KEY_SUPPRESSED_LRA = "suppressed.lra";
 
     private final InspectionService.Lra annotation;
     private final CoordinatorClient coordinatorClient;
@@ -62,6 +60,7 @@ class LRAAnnotationHandler implements AnnotationHandler {
         var participant = participantService.participant(baseUri, resourceInfo.getResourceClass());
         var existingLraId = LRAThreadContext.get().lra();
         var timeLimit = Duration.of(annotation.timeLimit(), annotation.timeUnit()).toMillis();
+        var clientId = method.getDeclaringClass().getName() + "#" + method.getName();
 
         URI lraId = null;
         URI parentLraId = null;
@@ -70,12 +69,12 @@ class LRAAnnotationHandler implements AnnotationHandler {
                 if (existingLraId.isPresent()) {
                     parentLraId = existingLraId.get();
                     reqCtx.getHeaders().putSingle(LRA_HTTP_PARENT_CONTEXT_HEADER, existingLraId.get().toASCIIString());
-                    lraId = coordinatorClient.start(existingLraId.get(), method.getDeclaringClass().getName() + "#" + method.getName(), timeLimit);
+                    lraId = coordinatorClient.start(existingLraId.get(), clientId, timeLimit);
                     coordinatorClient.join(lraId, timeLimit, participant)
                             .map(URI::toASCIIString)
                             .ifPresent(uri -> reqCtx.getHeaders().add(LRA_HTTP_RECOVERY_HEADER, uri));
                 } else {
-                    lraId = coordinatorClient.start(null, method.getDeclaringClass().getName() + "#" + method.getName(), timeLimit);
+                    lraId = coordinatorClient.start(null, clientId, timeLimit);
                     coordinatorClient.join(lraId, timeLimit, participant)
                             .map(URI::toASCIIString)
                             .ifPresent(uri -> reqCtx.getHeaders().add(LRA_HTTP_RECOVERY_HEADER, uri));
@@ -83,7 +82,7 @@ class LRAAnnotationHandler implements AnnotationHandler {
                 break;
             case NEVER:
                 if (existingLraId.isPresent()) {
-                    // If called inside an LRA context, i.e., the method is not executed 
+                    // If called inside an LRA context, i.e., the method is not executed
                     // and a 412 Precondition Failed is returned
                     reqCtx.abortWith(Response.status(Response.Status.PRECONDITION_FAILED).build());
                     return;
@@ -119,7 +118,7 @@ class LRAAnnotationHandler implements AnnotationHandler {
                 }
                 // non existing lra, fall thru to requires_new
             case REQUIRES_NEW:
-                lraId = coordinatorClient.start(null, method.getDeclaringClass().getName() + "#" + method.getName(), timeLimit);
+                lraId = coordinatorClient.start(null, clientId, timeLimit);
                 coordinatorClient.join(lraId, timeLimit, participant)
                         .map(URI::toASCIIString)
                         .ifPresent(uri -> reqCtx.getHeaders().add(LRA_HTTP_RECOVERY_HEADER, uri));

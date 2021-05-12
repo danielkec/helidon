@@ -59,9 +59,7 @@ import javax.ws.rs.Path;
 import javax.ws.rs.core.Response;
 
 import io.helidon.config.Config;
-import io.helidon.microprofile.lra.coordinator.client.CoordinatorClient;
-
-import static javax.interceptor.Interceptor.Priority.PLATFORM_AFTER;
+import io.helidon.microprofile.lra.coordinator.client.narayana.CoordinatorClient;
 
 import org.eclipse.microprofile.config.ConfigProvider;
 import org.eclipse.microprofile.lra.annotation.AfterLRA;
@@ -81,6 +79,11 @@ import org.jboss.jandex.IndexView;
 import org.jboss.jandex.Indexer;
 import org.jboss.jandex.MethodInfo;
 
+import static javax.interceptor.Interceptor.Priority.PLATFORM_AFTER;
+
+/**
+ * MicroProfile Long Running Actions CDI extension.
+ */
 public class LRACdiExtension implements Extension {
 
     private static final Logger LOGGER = Logger.getLogger(LRACdiExtension.class.getName());
@@ -91,6 +94,19 @@ public class LRACdiExtension implements Extension {
     private IndexView index = null;
     private final ClassLoader classLoader;
 
+    private static final Set<Class<? extends Annotation>> EXPECTED_ANNOTATIONS = Set.of(
+            AfterLRA.class,
+            Complete.class,
+            Compensate.class,
+            Forget.class
+    );
+    private static final Set<Class<? extends Annotation>> EXCLUDED_ANNOTATIONS = Set.of(PUT.class, Path.class);
+
+    private final Set<Class<?>> beanTypesWithCdiLRAMethods = new HashSet<>();
+
+    /**
+     * Initialize MicroProfile Long Running Actions CDI extension.
+     */
     public LRACdiExtension() {
         indexer = new Indexer();
         classLoader = Thread.currentThread().getContextClassLoader();
@@ -126,22 +142,12 @@ public class LRACdiExtension implements Extension {
                     LRA.class,
                     AfterLRA.class, Compensate.class, Complete.class, Forget.class, Status.class
             }) ProcessAnnotatedType<?> pat) {
-        // compile time bilt index 
+        // compile time bilt index
         if (index != null) return;
         // create runtime index when pre-built index is not available
         runtimeIndex(DotName.createSimple(pat.getAnnotatedType().getJavaClass().getName()));
     }
 
-    static final Set<Class<? extends Annotation>> EXPECTED_ANNOTATIONS = Set.of(
-            AfterLRA.class,
-            Complete.class,
-            Compensate.class,
-            Forget.class
-    );
-    static final Set<Class<? extends Annotation>> EXCLUDED_ANNOTATIONS = Set.of(PUT.class, Path.class);
-
-    Set<Class<?>> beanTypesWithCdiLRAMethods = new HashSet<>();
-    
     private void validateCdiLRASignatures(@Observes
                                           @WithAnnotations(
                                                   {
@@ -155,8 +161,12 @@ public class LRACdiExtension implements Extension {
         AnnotatedType<?> annotatedType = pat.getAnnotatedType();
         beanTypesWithCdiLRAMethods.add(annotatedType.getJavaClass());
         annotatedType.getMethods().stream()
-                .filter(m -> m.getAnnotations().stream().map(Annotation::annotationType).anyMatch(EXPECTED_ANNOTATIONS::contains))
-                .filter(m -> m.getAnnotations().stream().map(Annotation::annotationType).noneMatch(EXCLUDED_ANNOTATIONS::contains))
+                .filter(m -> m.getAnnotations().stream()
+                        .map(Annotation::annotationType)
+                        .anyMatch(EXPECTED_ANNOTATIONS::contains))
+                .filter(m -> m.getAnnotations().stream()
+                        .map(Annotation::annotationType)
+                        .noneMatch(EXCLUDED_ANNOTATIONS::contains))
                 .forEach(m -> {
                     List<? extends AnnotatedParameter<?>> parameters = m.getParameters();
                     if (parameters.size() > 2) {
@@ -204,7 +214,7 @@ public class LRACdiExtension implements Extension {
     private final Map<Class<?>, Bean<?>> lraCdiBeanReferences = new HashMap<>();
 
     private void cdiLRABeanReferences(@Observes ProcessManagedBean<?> event) {
-        if(beanTypesWithCdiLRAMethods.contains(event.getBean().getBeanClass())){
+        if (beanTypesWithCdiLRAMethods.contains(event.getBean().getBeanClass())) {
             lraCdiBeanReferences.put(event.getBean().getBeanClass(), event.getBean());
         }
     }
@@ -216,12 +226,11 @@ public class LRACdiExtension implements Extension {
             BeanManager beanManager) {
 
         if (index == null) {
-            // compile time built index 
+            // compile time built index
             index = indexer.complete();
         }
 
-        // ------------- Validate LRA methods ------------- 
-        // TODO: Clean up and externalize
+        // ------------- Validate LRA methods -------------
         InspectionService inspectionService =
                 lookup(beanManager.resolve(beanManager.getBeans(InspectionService.class)), beanManager);
 
@@ -238,7 +247,6 @@ public class LRACdiExtension implements Extension {
                 // no lra methods
                 continue;
             }
-
 
             // one of compensate or afterLra is mandatory
             Set<DotName> mandatoryAnnotations = Set.of(InspectionService.COMPENSATE, InspectionService.AFTER_LRA);
@@ -264,7 +272,8 @@ public class LRACdiExtension implements Extension {
             lraMethods.forEach((m, a) -> {
                 if (a.stream().map(AnnotationInstance::name).anyMatch(InspectionService.COMPENSATE::equals)) {
                     if (!returnTypes.contains(m.returnType().name())) {
-                        throw new DeploymentException("Invalid return type " + m.returnType() + " of compensating method " + m.name());
+                        throw new DeploymentException("Invalid return type " + m.returnType()
+                                + " of compensating method " + m.name());
                     }
                 }
                 if (a.stream().map(AnnotationInstance::name).anyMatch(InspectionService.AFTER_LRA::equals)) {

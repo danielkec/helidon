@@ -38,7 +38,7 @@ import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.UriBuilder;
 
-import io.helidon.microprofile.lra.coordinator.client.Participant;
+import io.helidon.microprofile.lra.coordinator.client.narayana.Participant;
 
 import org.eclipse.microprofile.lra.annotation.AfterLRA;
 import org.eclipse.microprofile.lra.annotation.Compensate;
@@ -88,7 +88,7 @@ class ParticipantImpl implements Participant {
                             .noneMatch(JAX_RS_ANNOTATIONS::contains)) {
                         //no jar-rs annotation means LRA cdi method
                         URI uri = UriBuilder.fromUri(baseUri)
-                                .path(ParticipantCdiResource.CDI_PARTICIPANT_PATH) //Auxiliary Jax-Rs resource for cdi methods 
+                                .path(ParticipantCdiResource.CDI_PARTICIPANT_PATH) //Auxiliary Jax-Rs resource for cdi methods
                                 .path(e.getKey().getSimpleName().toLowerCase())//@Complete -> /complete
                                 .path(resourceClazz.getName())
                                 .path(method.getName())
@@ -158,7 +158,6 @@ class ParticipantImpl implements Participant {
     }
 
     static Map<Class<? extends Annotation>, Set<Method>> scanForLRAMethods(Class<?> clazz) {
-        //TODO: use jandex
         Map<Class<? extends Annotation>, Set<Method>> methods = new HashMap<>();
         do {
             for (Method m : clazz.getDeclaredMethods()) {

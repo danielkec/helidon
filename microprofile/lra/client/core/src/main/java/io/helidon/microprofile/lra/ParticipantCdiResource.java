@@ -47,12 +47,14 @@ import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_ENDED_CONTEXT_HEADER;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_PARENT_CONTEXT_HEADER;
 
+/**
+ * JaxRs resource for LRA CDI methods.
+ */
 @ApplicationScoped
 @Path(ParticipantCdiResource.CDI_PARTICIPANT_PATH)
 public class ParticipantCdiResource {
 
     static final String CDI_PARTICIPANT_PATH = "lra-client-cdi-resource";
-    //http://127.0.0.1:43733/lra-client-cdi-methods/complete/io.helidon.microprofile.lra.TestApplication$StartAndCloseCdi/complete
 
     private static final Logger LOGGER = Logger.getLogger(ParticipantCdiResource.class.getName());
 
@@ -70,6 +72,15 @@ public class ParticipantCdiResource {
     @Inject
     private ParticipantService participantService;
 
+    /**
+     * Endpoint for non-JaxRs methods annotated with {@link org.eclipse.microprofile.lra.annotation.Compensate @Compensate}.
+     *
+     * @param lraId      id of LRA
+     * @param parentId   id of parent LRA
+     * @param fqdn       fully qualified name of the LRA method's class
+     * @param methodName name of the LRA method
+     * @return jax-rs {@link javax.ws.rs.core.Response response}
+     */
     @PUT
     @Path("/compensate/{fqdn}/{methodName}")
     public Response compensate(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
@@ -90,6 +101,15 @@ public class ParticipantCdiResource {
         }
     }
 
+    /**
+     * Endpoint for non-JaxRs methods annotated with {@link org.eclipse.microprofile.lra.annotation.Complete @Complete}.
+     *
+     * @param lraId      id of LRA
+     * @param parentId   id of parent LRA
+     * @param fqdn       fully qualified name of the LRA method's class
+     * @param methodName name of the LRA method
+     * @return jax-rs {@link javax.ws.rs.core.Response response}
+     */
     @PUT
     @Path("/complete/{fqdn}/{methodName}")
     public CompletionStage<Response> complete(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) URI lraId,
@@ -108,6 +128,15 @@ public class ParticipantCdiResource {
         }
     }
 
+    /**
+     * Endpoint for non-JaxRs methods annotated with {@link org.eclipse.microprofile.lra.annotation.AfterLRA @AfterLRA}.
+     *
+     * @param lraId      id of LRA
+     * @param fqdn       fully qualified name of the LRA method's class
+     * @param methodName name of the LRA method
+     * @param status     {@link LRAStatus LRA status}
+     * @return jax-rs {@link javax.ws.rs.core.Response response}
+     */
     @PUT
     @Path("/afterlra/{fqdn}/{methodName}")
     public Response after(@HeaderParam(LRA_HTTP_ENDED_CONTEXT_HEADER) URI lraId,
@@ -126,6 +155,15 @@ public class ParticipantCdiResource {
         }
     }
 
+    /**
+     * Endpoint for non-JaxRs methods annotated with {@link org.eclipse.microprofile.lra.annotation.Status @Status}.
+     *
+     * @param lraId      id of LRA
+     * @param parentId   id of parent LRA
+     * @param fqdn       fully qualified name of the LRA method's class
+     * @param methodName name of the LRA method
+     * @return jax-rs {@link javax.ws.rs.core.Response response}
+     */
     @GET
     @Path("/status/{fqdn}/{methodName}")
     public CompletionStage<Response> status(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) String lraId,
@@ -167,6 +205,15 @@ public class ParticipantCdiResource {
         }
     }
 
+    /**
+     * Endpoint for non-JaxRs methods annotated with {@link org.eclipse.microprofile.lra.annotation.Forget @Forget}.
+     *
+     * @param lraId      id of LRA
+     * @param parentId   id of parent LRA
+     * @param fqdn       fully qualified name of the LRA method's class
+     * @param methodName
+     * @return jax-rs {@link javax.ws.rs.core.Response response}
+     */
     @DELETE
     @Path("/forget/{fqdn}/{methodName}")
     public Response forget(@HeaderParam(LRA_HTTP_CONTEXT_HEADER) String lraId,

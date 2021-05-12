@@ -190,7 +190,7 @@ public class LRACdiExtension implements Extension {
                 });
     }
 
-    public void chooseCoordinatorClient(@Observes ProcessAnnotatedType<CoordinatorClient> pat) {
+    void chooseCoordinatorClient(@Observes ProcessAnnotatedType<CoordinatorClient> pat) {
         Class<CoordinatorClient> clazz = pat.getAnnotatedType().getJavaClass();
         if (CoordinatorClient.class.isAssignableFrom(clazz)) {
             // Exclude coordinators only when there is configured specific one
@@ -286,7 +286,7 @@ public class LRACdiExtension implements Extension {
         }
     }
 
-    public Map<Class<?>, Bean<?>> lraCdiBeanReferences() {
+    Map<Class<?>, Bean<?>> lraCdiBeanReferences() {
         return lraCdiBeanReferences;
     }
 

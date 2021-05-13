@@ -96,12 +96,12 @@ public class HelidonMethodExecutor implements ContainerMethodExecutor {
                 .filter(f -> TestName.class.isAssignableFrom(f.getType()))
                 .forEach(rethrow(f -> {
                     Object testName = f.get(instance);
-                    if(testName != null){
+                    if (testName != null) {
                         Field nameField = TestName.class.getDeclaredField("name");
                         nameField.setAccessible(true);
-                        nameField.set(testName, 
+                        nameField.set(testName,
                                 Description.createTestDescription(
-                                        instance.getClass(), 
+                                        instance.getClass(),
                                         testMethodExecutor.getMethod().getName()).getMethodName());
                     }
                 }));
@@ -130,7 +130,7 @@ public class HelidonMethodExecutor implements ContainerMethodExecutor {
     /**
      * Invoke an annotated method.
      *
-     * @param object Test instance.
+     * @param object     Test instance.
      * @param annotClass Annotation to look for.
      */
     private static void invokeAnnotated(Object object, Class<? extends Annotation> annotClass) {
@@ -153,8 +153,8 @@ public class HelidonMethodExecutor implements ContainerMethodExecutor {
         // Invoke all candidates skipping those that are overridden. Methods compared
         // by name only since they typically have no params.
         invocable.stream()
-                 .filter(m -> overridden.stream().map(Method::getName).noneMatch(s -> s.equals(m.getName())))
-                 .forEach(rethrow(m -> m.invoke(object)));
+                .filter(m -> overridden.stream().map(Method::getName).noneMatch(s -> s.equals(m.getName())))
+                .forEach(rethrow(m -> m.invoke(object)));
     }
 
     static <T> Consumer<? super T> rethrow(ThrowingConsumer<T> consumer) {

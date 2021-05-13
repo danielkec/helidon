@@ -16,11 +16,11 @@
 
 package io.helidon.microprofile.arquillian;
 
-import org.jboss.arquillian.container.spi.ConfigurationException;
-import org.jboss.arquillian.container.spi.client.container.ContainerConfiguration;
-
 import java.util.HashMap;
 import java.util.Map;
+
+import org.jboss.arquillian.container.spi.ConfigurationException;
+import org.jboss.arquillian.container.spi.client.container.ContainerConfiguration;
 
 /**
  * Configuration for the Helidon arquillian container.
@@ -37,7 +37,7 @@ import java.util.Map;
  * </ul>
  */
 public class HelidonContainerConfiguration implements ContainerConfiguration {
-    Map<String, String> customMap = new HashMap<>();
+    private final Map<String, String> customMap = new HashMap<>();
     private String appClassName = null;
     private String excludeArchivePattern = null;
     private int port = 8080;
@@ -45,18 +45,30 @@ public class HelidonContainerConfiguration implements ContainerConfiguration {
     private boolean useRelativePath = false;
     private boolean useParentClassloader = true;
 
-    public void set(String propertyName, String value){
+    /**
+     * Set custom property.
+     *
+     * @param propertyName name of the custom property
+     * @param value        value of custom property
+     */
+    public void set(String propertyName, String value) {
         customMap.put(propertyName, value);
     }
-    
-    public String get(String propertyName){
+
+    /**
+     * Get custom property.
+     *
+     * @param propertyName name of the custom property
+     * @return value of custom property or null
+     */
+    public String get(String propertyName) {
         return customMap.get(propertyName);
     }
-    
+
     public String getApp() {
         return appClassName;
     }
-    
+
     public void setApp(String app) {
         this.appClassName = app;
     }
@@ -106,5 +118,9 @@ public class HelidonContainerConfiguration implements ContainerConfiguration {
         if ((port <= 0) || (port > Short.MAX_VALUE)) {
             throw new ConfigurationException("port value of " + port + " is out of range");
         }
+    }
+
+    Map<String, String> getCustomMap() {
+        return customMap;
     }
 }

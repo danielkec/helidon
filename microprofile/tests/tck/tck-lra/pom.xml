@@ -32,7 +32,6 @@
         <dependency>
             <groupId>io.helidon.microprofile.lra</groupId>
             <artifactId>helidon-microprofile-lra-client-narayana-adapter</artifactId>
-            <version>${project.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -62,7 +61,7 @@
             <dependencies>
                 <dependency>
                     <groupId>io.helidon.microprofile.lra</groupId>
-                    <artifactId>helidon-microprofile-lra-coordinator</artifactId>
+                    <artifactId>helidon-mock-lra-coordinator</artifactId>
                     <version>${project.version}</version>
                     <scope>test</scope>
                 </dependency>

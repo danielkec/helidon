@@ -32,6 +32,5 @@
 
     <modules>
         <module>client</module>
-        <module>mock-coordinator</module>
     </modules>
 </project>

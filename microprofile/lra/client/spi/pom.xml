@@ -37,7 +37,6 @@
         <dependency>
             <groupId>org.eclipse.microprofile.lra</groupId>
             <artifactId>microprofile-lra-api</artifactId>
-            <version>1.0-RC3</version>
             <scope>compile</scope>
         </dependency>
     </dependencies>

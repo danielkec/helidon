@@ -50,23 +50,26 @@ import javax.ws.rs.core.UriBuilder;
 import io.helidon.common.reactive.Single;
 import io.helidon.microprofile.scheduling.FixedRate;
 
-import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
-import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVERY_HEADER;
-
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.eclipse.microprofile.lra.annotation.LRAStatus;
+
+import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT_HEADER;
+import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVERY_HEADER;
 
 @ApplicationScoped
 @Path("lra-coordinator")
 public class Coordinator {
 
     public static final String CLIENT_ID_PARAM_NAME = "ClientID";
-    public static final String TIMELIMIT_PARAM_NAME = "TimeLimit";
+    public static final String TIME_LIMIT_PARAM_NAME = "TimeLimit";
     public static final String PARENT_LRA_PARAM_NAME = "ParentLRA";
 
     private static final Logger LOGGER = Logger.getLogger(Coordinator.class.getName());
+    private static final Set<LRAStatus> RECOVERABLE_STATUSES = Set.of(LRAStatus.Cancelling, LRAStatus.Closing, LRAStatus.Active);
 
-    LraPersistentRegistry lraPersistentRegistry = new LraPersistentRegistry();
+    private final LraPersistentRegistry lraPersistentRegistry = new LraPersistentRegistry();
+
+    private final AtomicReference<CompletableFuture<Void>> completedRecovery = new AtomicReference<>(new CompletableFuture<>());
 
     @Inject
     @ConfigProperty(name = "lra.tck.coordinator.persist", defaultValue = "false")
@@ -91,25 +94,25 @@ public class Coordinator {
     @POST
     @Path("start")
     @Produces(MediaType.TEXT_PLAIN)
-    public Response startLRA(
+    public Response start(
             @QueryParam(CLIENT_ID_PARAM_NAME) @DefaultValue("") String clientId,
-            @QueryParam(TIMELIMIT_PARAM_NAME) @DefaultValue("0") Long timelimit,
+            @QueryParam(TIME_LIMIT_PARAM_NAME) @DefaultValue("0") Long timeLimit,
             @QueryParam(PARENT_LRA_PARAM_NAME) @DefaultValue("") String parentLRA,
             @HeaderParam(LRA_HTTP_CONTEXT_HEADER) String parentId) throws WebApplicationException {
 
-        String lraUUID = "LRAID" + UUID.randomUUID(); //todo better UUID
+        String lraUUID = UUID.randomUUID().toString();
         URI lraId = UriBuilder.fromPath(coordinatorURL).path(lraUUID).build();
         if (parentLRA != null && !parentLRA.isEmpty()) {
-            LRA parent = lraPersistentRegistry.get(parentLRA.replace(coordinatorURL, ""));  //todo resolve coordinatorUrl here with member coordinatorURL
-            if (parent != null) { // todo null would be unexpected and cause to compensate or exit entirely akin to systemexception
+            LRA parent = lraPersistentRegistry.get(parentLRA.replace(coordinatorURL, ""));
+            if (parent != null) {
                 LRA childLRA = new LRA(lraUUID, UriBuilder.fromPath(parentLRA).build());
-                childLRA.setupTimeout(timelimit);
+                childLRA.setupTimeout(timeLimit);
                 lraPersistentRegistry.put(lraUUID, childLRA);
                 parent.addChild(childLRA);
             }
         } else {
             LRA newLra = new LRA(lraUUID);
-            newLra.setupTimeout(timelimit);
+            newLra.setupTimeout(timeLimit);
             lraPersistentRegistry.put(lraUUID, newLra);
         }
         return Response.created(lraId)
@@ -121,7 +124,7 @@ public class Coordinator {
     @PUT
     @Path("{LraId}/close")
     @Produces(MediaType.TEXT_PLAIN)
-    public Response closeLRA(
+    public Response close(
             @PathParam("LraId") String lraId) throws NotFoundException {
         LRA lra = lraPersistentRegistry.get(lraId);
         if (lra == null) {
@@ -137,7 +140,7 @@ public class Coordinator {
 
     @PUT
     @Path("{LraId}/cancel")
-    public Response cancelLRA(
+    public Response cancel(
             @PathParam("LraId") String lraId) throws NotFoundException {
         LRA lra = lraPersistentRegistry.get(lraId);
         if (lra == null) {
@@ -152,7 +155,7 @@ public class Coordinator {
     @Produces(MediaType.APPLICATION_JSON)
     public Response join(
             @PathParam("LraId") String lraId,
-            @QueryParam(TIMELIMIT_PARAM_NAME) @DefaultValue("0") long timeLimit,
+            @QueryParam(TIME_LIMIT_PARAM_NAME) @DefaultValue("0") long timeLimit,
             @HeaderParam("Link") @DefaultValue("") String compensatorLink,
             String compensatorData) throws NotFoundException {
         LRA lra = lraPersistentRegistry.get(lraId);
@@ -161,7 +164,7 @@ public class Coordinator {
         } else {
             if (lra.checkTimeout()) {
                 // too late to join
-                return Response.status(Response.Status.PRECONDITION_FAILED).build(); // 410 also acceptable/equivalent behavior
+                return Response.status(Response.Status.PRECONDITION_FAILED).build();
             }
         }
         lra.addParticipant(compensatorLink);
@@ -182,7 +185,7 @@ public class Coordinator {
     @GET
     @Path("{LraId}/status")
     @Produces(MediaType.TEXT_PLAIN)
-    public Response getStatus(@PathParam("LraId") String lraId) {
+    public Response status(@PathParam("LraId") String lraId) {
         LRA lra = lraPersistentRegistry.get(lraId);
         if (lra == null) {
             return Response.status(Response.Status.NOT_FOUND)
@@ -194,16 +197,27 @@ public class Coordinator {
                 .build();
     }
 
+    @PUT
+    @Path("{LraId}/remove")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response leaveLRA(@PathParam("LraId") String lraId, String compensatorUrl) {
+        LRA lra = lraPersistentRegistry.get(lraId);
+        if (lra == null) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+        lra.removeParticipant(compensatorUrl);
+        return Response.ok().build();
+    }
+
     @GET
     @Path("recovery")
     @Produces(MediaType.TEXT_PLAIN)
     public Response recovery() {
-        var recoverables = Set.of(LRAStatus.Cancelling, LRAStatus.Closing, LRAStatus.Active);
-        return Coordinator.nextRecoveryCycle()
+        return nextRecoveryCycle()
                 .map(String::valueOf)
                 .onCompleteResume(lraPersistentRegistry
                         .stream()
-                        .filter(lra -> recoverables.contains(lra.status().get()))
+                        .filter(lra -> RECOVERABLE_STATUSES.contains(lra.status().get()))
                         .map(lra -> lra.status().get().name() + "-" + lra.lraId)
                         .collect(Collectors.joining(","))
                 ).map(s -> Response.ok(s).build())
@@ -236,7 +250,6 @@ public class Coordinator {
                         // until explicitly told that it can clean up using this @Forget annotation.
                         LOGGER.log(Level.FINE, "Forgetting {0} {1}", new Object[] {lra.status().get(), lra.lraId});
                         lra.tryForget();
-//                        lra.forgetNested();
                     }
                 }
             }
@@ -244,25 +257,10 @@ public class Coordinator {
         completedRecovery.getAndSet(new CompletableFuture<>()).complete(null);
     }
 
-    static AtomicReference<CompletableFuture<Void>> completedRecovery = new AtomicReference<>(new CompletableFuture<>());
-
-    public static Single<Void> nextRecoveryCycle() {
+    private Single<Void> nextRecoveryCycle() {
         return Single.create(completedRecovery.get(), true)
                 //wait for the second one, as first could have been in progress
                 .onCompleteResumeWith(Single.create(completedRecovery.get(), true))
                 .ignoreElements();
     }
-
-    @PUT
-    @Path("{LraId}/remove")
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response leaveLRA(@PathParam("LraId") String lraId, String compensatorUrl) {
-        LRA lra = lraPersistentRegistry.get(lraId);
-        if (lra == null) {
-            return Response.status(Response.Status.NOT_FOUND).build();
-        }
-        lra.removeParticipant(compensatorUrl);
-        return Response.ok().build();
-    }
-
 }

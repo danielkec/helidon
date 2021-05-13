@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.StringJoiner;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -44,6 +43,9 @@ import javax.xml.bind.annotation.XmlRootElement;
 import javax.xml.bind.annotation.XmlTransient;
 import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 
+import org.eclipse.microprofile.lra.annotation.LRAStatus;
+import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
+
 import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.Active;
 import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.Compensated;
 import static org.eclipse.microprofile.lra.annotation.ParticipantStatus.Compensating;
@@ -56,9 +58,6 @@ import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_CONTEXT
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_ENDED_CONTEXT_HEADER;
 import static org.eclipse.microprofile.lra.annotation.ws.rs.LRA.LRA_HTTP_RECOVERY_HEADER;
 
-import org.eclipse.microprofile.lra.annotation.LRAStatus;
-import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
-
 @XmlRootElement
 @XmlAccessorType(XmlAccessType.FIELD)
 public class Participant {
@@ -70,10 +69,10 @@ public class Participant {
     private final AtomicReference<ForgetStatus> forgetCalled = new AtomicReference<>(ForgetStatus.NOT_SENT);
     private final AtomicReference<AfterLraStatus> afterLRACalled = new AtomicReference<>(AfterLraStatus.NOT_SENT);
     private final AtomicReference<SendingStatus> sendingStatus = new AtomicReference<>(SendingStatus.NOT_SENDING);
-    AtomicInteger remainingCloseAttempts = new AtomicInteger(RETRY_CNT);
-    AtomicInteger remainingAfterLraAttempts = new AtomicInteger(RETRY_CNT);
+    private final AtomicInteger remainingCloseAttempts = new AtomicInteger(RETRY_CNT);
+    private final AtomicInteger remainingAfterLraAttempts = new AtomicInteger(RETRY_CNT);
 
-    final AtomicReference<Status> status = new AtomicReference<>(Status.ACTIVE);
+    private final AtomicReference<Status> status = new AtomicReference<>(Status.ACTIVE);
 
     enum Status {
         ACTIVE(Active, null, null, false, Set.of(Completing, Compensating)),
@@ -126,7 +125,7 @@ public class Participant {
             return Optional.ofNullable(failedFinalStatus.participantStatus);
         }
     }
-    
+
     enum SendingStatus {
         SENDING, NOT_SENDING;
     }
@@ -139,11 +138,10 @@ public class Participant {
         NOT_SENT, SENDING, SENT;
     }
 
-    //TODO: Nested participant needs custom states
     enum CompensateStatus {
         NOT_SENT, SENDING, SENT;
     }
-    
+
     @XmlElement
     @XmlJavaTypeAdapter(Link.JaxbAdapter.class)
     private final List<Link> compensatorLinks = new ArrayList<>(5);
@@ -158,7 +156,7 @@ public class Participant {
                 .forEach(this.compensatorLinks::add);
     }
 
-    public Optional<Link> getCompensatorLink(String rel) {
+    Optional<Link> getCompensatorLink(String rel) {
         return compensatorLinks.stream().filter(l -> rel.equals(l.getRel())).findFirst();
     }
 
@@ -197,47 +195,32 @@ public class Participant {
         return getCompensatorLink("status").map(Link::getUri);
     }
 
+    Status state() {
+        return status.get();
+    }
+
     boolean isForgotten() {
         return forgetCalled.get() == ForgetStatus.SENT;
     }
 
-    public boolean isAfterLRASuccessfullyCalledIfEnlisted() {
-        return getAfterURI().isEmpty();
-    }
-
-    //A listener is a participant with afterURI endpoint. It may not have a complete or compensate endpoint.
     boolean isListenerOnly() {
         return getCompleteURI().isEmpty() && getCompensateURI().isEmpty();
     }
 
-    public boolean isInEndStateOrListenerOnly() {
+    boolean isInEndStateOrListenerOnly() {
         return isListenerOnly() || status.get().isFinal();
-    }
-
-    public boolean isInEndStateOrListenerOnlyForTerminationType(boolean isCompensate) {
-        Status status = this.status.get();
-        if (isCompensate) {
-            return status == Status.FAILED_TO_COMPENSATE ||
-                    status == Status.COMPENSATED ||
-                    isListenerOnly();
-        } else {
-            return status == Status.FAILED_TO_COMPLETE ||
-                    status == Status.COMPLETED ||
-                    isListenerOnly();
-        }
     }
 
     boolean sendCancel(LRA lra) {
         Optional<URI> endpointURI = getCompensateURI();
         if (!sendingStatus.compareAndSet(SendingStatus.NOT_SENDING, SendingStatus.SENDING)) return false;
-        // TODO: Nested participant needs its own state workflow
         if (!compensateCalled.compareAndSet(CompensateStatus.NOT_SENT, CompensateStatus.SENDING)) return false;
         try {
             if (!status.get().equals(Status.ACTIVE)) {// call for client status only on retries
                 // If the participant does not support idempotency then it MUST be able to report its status 
                 // by annotating one of the methods with the @Status annotation which should report the status
                 // in case we can't retrieve status from participant just retry n times
-                ParticipantStatus reportedClientStatus = retrieveStatus(lra).orElse(null);
+                ParticipantStatus reportedClientStatus = retrieveStatus(lra, Compensating).orElse(null);
                 if (reportedClientStatus == Compensated) {
                     LOGGER.log(Level.INFO, "Participant reports it is compensated.");
                     status.set(Status.COMPENSATED);
@@ -252,7 +235,7 @@ public class Participant {
                     return true;
                 }
             }
-            
+
             Response response = client.target(endpointURI.get())
                     .request()
                     .headers(lra.headers())
@@ -305,7 +288,7 @@ public class Participant {
                 // If the participant does not support idempotency then it MUST be able to report its status 
                 // by annotating one of the methods with the @Status annotation which should report the status
                 // in case we can't retrieve status from participant just retry n times
-                ParticipantStatus reportedClientStatus = retrieveStatus(lra).orElse(null);
+                ParticipantStatus reportedClientStatus = retrieveStatus(lra, Completing).orElse(null);
                 if (reportedClientStatus == Completed) {
                     LOGGER.log(Level.INFO, "Participant reports it is completed.");
                     status.set(Status.COMPLETED);
@@ -363,7 +346,7 @@ public class Participant {
         return false;
     }
 
-    public boolean trySendAfterLRA(LRA lra) {
+    boolean trySendAfterLRA(LRA lra) {
         if (!isInEndStateOrListenerOnly()) return false;
 
         try {
@@ -388,7 +371,7 @@ public class Participant {
     }
 
 
-    public Optional<ParticipantStatus> retrieveStatus(LRA lra) {
+    Optional<ParticipantStatus> retrieveStatus(LRA lra, ParticipantStatus inProgressStatus) {
         Optional<URI> statusURI = this.getStatusURI();
         if (statusURI.isPresent()) {
             try {
@@ -402,8 +385,7 @@ public class Participant {
                 int responseStatus = response.getStatus();
                 switch (responseStatus) {
                     case 202:
-                        //TODO: what about canceling?
-                        return Optional.of(Completing);
+                        return Optional.of(inProgressStatus);
                     case 410: //GONE
                         //Completing -> FailedToComplete ...
                         return status.get().failedFinalStatus();
@@ -430,7 +412,7 @@ public class Participant {
         return Optional.empty();
     }
 
-    public boolean sendForget(LRA lra) {
+    boolean sendForget(LRA lra) {
         if (!forgetCalled.compareAndSet(ForgetStatus.NOT_SENT, ForgetStatus.SENDING)) return false;
         try {
             Response response = client.target(getForgetURI().get())
@@ -467,18 +449,5 @@ public class Participant {
         }
 
         return false;
-    }
-
-    @Override
-    public String toString() {
-        return new StringJoiner(", ", Participant.class.getSimpleName() + "[", "]")
-                .add("compensateCalled=" + compensateCalled)
-                .add("forgetCalled=" + forgetCalled)
-                .add("afterLRACalled=" + afterLRACalled)
-                .add("sendingStatus=" + sendingStatus)
-                .add("remainingCloseAttempts=" + remainingCloseAttempts)
-                .add("remainingAfterLraAttempts=" + remainingAfterLraAttempts)
-                .add("status=" + status)
-                .toString();
     }
 }

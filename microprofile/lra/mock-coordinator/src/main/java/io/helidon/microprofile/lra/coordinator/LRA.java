@@ -62,11 +62,9 @@ public class LRA {
     @XmlElement
     List<Participant> participants = new CopyOnWriteArrayList<>();
 
-    private AtomicReference<LRAStatus> status = new AtomicReference<>(LRAStatus.Active);
+    private final AtomicReference<LRAStatus> status = new AtomicReference<>(LRAStatus.Active);
 
-    public boolean isCancel;
     boolean isRoot = false;
-    boolean isParent;
     boolean isChild;
     private long whenReadyToDelete = 0;
 
@@ -126,14 +124,13 @@ public class LRA {
      *
      * @param lra The child
      */
-    public void addChild(LRA lra) {
+    void addChild(LRA lra) {
         children.add(lra);
         lra.isChild = true;
         lra.parent = this;
-        isParent = true;
     }
 
-    public MultivaluedMap<String, Object> headers() {
+    MultivaluedMap<String, Object> headers() {
         MultivaluedMap<String, Object> multivaluedMap = new MultivaluedHashMap<>(4);
         multivaluedMap.add(LRA_HTTP_CONTEXT_HEADER, lraId);
         multivaluedMap.add(LRA_HTTP_ENDED_CONTEXT_HEADER, lraId);
@@ -151,11 +148,14 @@ public class LRA {
             return;
         }
         sendComplete();
-        forgetNested();// needs to go before nested close, so we know if nested was already closed or not(non closed nested can't get @Forget call)
+        // needs to go before nested close, so we know if nested was already closed 
+        // or not(non closed nested can't get @Forget call)
+        forgetNested();
         for (LRA nestedLRA : children) {
             nestedLRA.close();
         }
         sendAfterLRA();
+        markForDeletion();
     }
 
     void cancel() {
@@ -171,11 +171,12 @@ public class LRA {
         sendCancel();
         sendAfterLRA();
         tryForget();
+        markForDeletion();
     }
 
     void timeout() {
         for (LRA nestedLRA : children) {
-            if (!nestedLRA.areAllInEndStateOrListenerOnlyForTerminationType(isCancel)) {
+            if (nestedLRA.participants.stream().anyMatch(p -> p.state().isFinal() || p.isListenerOnly())) {
                 nestedLRA.timeout();
             }
         }
@@ -183,14 +184,13 @@ public class LRA {
         sendAfterLRA();
     }
 
-    public boolean forgetNested() {
+    boolean forgetNested() {
         for (LRA nestedLRA : children) {
             //dont do forget not yet closed nested lra
             if (nestedLRA.status.get() != LRAStatus.Closed) continue;
             boolean allDone = true;
             for (Participant participant : nestedLRA.participants) {
                 if (participant.getForgetURI().isEmpty() || participant.isForgotten()) continue;
-//                if (participant.status.get() == Participant.Status.COMPLETED) continue;
                 allDone = participant.sendForget(nestedLRA) && allDone;
             }
             if (!allDone) return false;
@@ -198,22 +198,21 @@ public class LRA {
         return true;
     }
 
-    public boolean tryForget() {
+    boolean tryForget() {
         boolean allFinished = true;
         for (Participant participant : participants) {
             if (participant.getForgetURI().isEmpty() || participant.isForgotten()) continue;
             if (Set.of(
-                    // Participant.Status.COMPLETED,
                     Participant.Status.FAILED_TO_COMPLETE,
                     Participant.Status.FAILED_TO_COMPENSATE
-            ).contains(participant.status.get())) {
+            ).contains(participant.state())) {
                 allFinished = participant.sendForget(this) && allFinished;
             }
         }
         return allFinished;
     }
 
-    public AtomicReference<LRAStatus> status() {
+    AtomicReference<LRAStatus> status() {
         return status;
     }
 
@@ -243,7 +242,6 @@ public class LRA {
         }
     }
 
-
     boolean sendAfterLRA() {
         boolean allSent = true;
         for (Participant participant : participants) {
@@ -252,45 +250,12 @@ public class LRA {
         return allSent;
     }
 
-    public boolean isReadyToDelete() {
+    boolean isReadyToDelete() {
         return whenReadyToDelete != 0 && whenReadyToDelete < System.currentTimeMillis();
     }
-
-
-    public boolean areAllAfterLRASuccessfullyCalledOrForgotten() {
-        for (Participant participant : participants) {
-            if (participant.getAfterURI().isPresent() && !participant.isForgotten()) return false;
-        }
-        return true;
-    }
-
-    public boolean areAllInEndState() {
-        for (Participant participant : participants) {
-            if (!participant.isInEndStateOrListenerOnly()) return false;
-        }
-        return true;
-    }
-
-    public boolean areAllInEndStateOrListenerOnlyForTerminationType(boolean isCompensate) {
-        for (Participant participant : participants) {
-            if (!participant.isInEndStateOrListenerOnlyForTerminationType(isCompensate)) return false;
-        }
-        return true;
-    }
-
-    @Override
-    public String toString() {
-        return new StringJoiner(", ", LRA.class.getSimpleName() + "[", "]")
-                .add("timeout=" + timeout)
-                .add("lraId='" + lraId + "'")
-                .add("parentId=" + parentId)
-                .add("parent=" + parent)
-                .add("status=" + status)
-                .add("isCancel=" + isCancel)
-                .add("isRoot=" + isRoot)
-                .add("isParent=" + isParent)
-                .add("isChild=" + isChild)
-                .add("whenReadyToDelete=" + whenReadyToDelete)
-                .toString();
+    
+    void markForDeletion(){
+        // delete after 10 minutes
+        whenReadyToDelete = (10 * 60 * 1000) + System.currentTimeMillis();
     }
 }

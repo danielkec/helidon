@@ -23,6 +23,8 @@ import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.Stream;
 
 import javax.ws.rs.core.Link;
@@ -40,6 +42,8 @@ import org.eclipse.microprofile.lra.annotation.ParticipantStatus;
 @XmlRootElement
 @XmlAccessorType(XmlAccessType.FIELD)
 public class LraPersistentRegistry {
+
+    private static final Logger LOGGER = Logger.getLogger(LraPersistentRegistry.class.getName());
 
     static java.nio.file.Path registry = Paths.get("target/mock-coordinator/lra-registry");
 
@@ -69,8 +73,8 @@ public class LraPersistentRegistry {
         try {
             if (Files.exists(registry)) {
                 JAXBContext context = JAXBContext.newInstance(
-                        LraPersistentRegistry.class, 
-                        LRA.class, 
+                        LraPersistentRegistry.class,
+                        LRA.class,
                         Participant.class,
                         LRAStatus.class,
                         Participant.CompensateStatus.class,
@@ -85,14 +89,7 @@ public class LraPersistentRegistry {
                 lraMap.putAll(lraPersistentRegistry.lraMap);
             }
         } catch (Throwable e) {
-            e.printStackTrace();
-            System.out.println("+++++++++++++++++++");
-            try {
-                System.out.println(Files.readString(registry));
-            } catch (IOException ioException) {
-                ioException.printStackTrace();
-            }
-            System.out.println("+++++++++++++++++++");
+            LOGGER.log(Level.SEVERE, "Error when loading persisted coordinator registry.");
         }
     }
 
@@ -100,8 +97,8 @@ public class LraPersistentRegistry {
         try {
             JAXBContext context = JAXBContext.newInstance(
                     LraPersistentRegistry.class,
-                    LRA.class, 
-                    Participant.class, 
+                    LRA.class,
+                    Participant.class,
                     LRAStatus.class,
                     Participant.CompensateStatus.class,
                     Participant.ForgetStatus.class,
@@ -119,7 +116,7 @@ public class LraPersistentRegistry {
             lraPersistentRegistry.lraMap.putAll(lraMap);
             mar.marshal(lraPersistentRegistry, registry.toFile());
         } catch (JAXBException | IOException e) {
-            e.printStackTrace();
+            LOGGER.log(Level.SEVERE, "Error when persisting coordinator registry.");
         }
     }
 }

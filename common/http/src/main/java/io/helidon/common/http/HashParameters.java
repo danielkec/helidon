@@ -17,7 +17,6 @@
 package io.helidon.common.http;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -26,9 +25,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.function.Function;
+import java.util.stream.StreamSupport;
 
 /**
  * A {@link ConcurrentSkipListMap} based {@link Parameters} implementation with
@@ -36,9 +37,13 @@ import java.util.function.Function;
  */
 public class HashParameters implements Parameters {
 
-    private static final List<String> EMPTY_STRING_LIST = Collections.emptyList();
+    private static final CharSequence[] EMPTY_STRING_LIST = new CharSequence[0];
 
-    private final ConcurrentMap<String, List<String>> content;
+    private final ConcurrentMap<CharSequence, CharSequence[]> content;
+
+    public Map<CharSequence, CharSequence[]> content(){
+        return content;
+    }
 
     /**
      * Creates a new instance.
@@ -55,22 +60,11 @@ public class HashParameters implements Parameters {
      */
     protected HashParameters(Map<String, List<String>> initialContent) {
         if (initialContent == null) {
-            content = new ConcurrentSkipListMap<>(String.CASE_INSENSITIVE_ORDER);
+            content = new ConcurrentHashMap<>();
         } else {
-            content = new ConcurrentSkipListMap<>(String.CASE_INSENSITIVE_ORDER);
+            content = new ConcurrentHashMap<>();
             for (Map.Entry<String, List<String>> entry : initialContent.entrySet()) {
-                content.compute(
-                        entry.getKey(),
-                        (key, values) -> {
-                            if (values == null) {
-                                return Collections.unmodifiableList(new ArrayList<>(entry.getValue()));
-                            } else {
-                                values.addAll(entry.getValue());
-                                return values;
-
-                            }
-                        }
-                );
+                content.put(entry.getKey(), entry.getValue().toArray(new String[0]));
             }
         }
     }
@@ -171,15 +165,7 @@ public class HashParameters implements Parameters {
         return new HashParameters(composer);
     }
 
-    private List<String> internalListCopy(String... values) {
-        return Optional.ofNullable(values)
-                .map(Arrays::asList)
-                .filter(l -> !l.isEmpty())
-                .map(Collections::unmodifiableList)
-                .orElse(null);
-    }
-
-    private List<String> internalListCopy(Iterable<String> values) {
+    private static List<String> internalListCopy(Iterable<String> values) {
         if (values == null) {
             return null;
         } else {
@@ -200,83 +186,101 @@ public class HashParameters implements Parameters {
         }
     }
 
+    private static List<String> toStringList(CharSequence... sequences) {
+        String[] resultArr = new String[sequences.length];
+        for (int i = 0; i < sequences.length; i++) {
+            resultArr[i] = sequences[i].toString();
+        }
+        return List.of(resultArr);
+    }
+
     @Override
     public Optional<String> first(String name) {
         Objects.requireNonNull(name, "Parameter 'name' is null!");
-        return content.getOrDefault(name, EMPTY_STRING_LIST).stream().findFirst();
+        CharSequence[] values = content.getOrDefault(name, EMPTY_STRING_LIST);
+        if (values.length > 0) {
+            return Optional.of(values[0].toString());
+        } else {
+            return Optional.empty();
+        }
     }
 
     @Override
     public List<String> all(String name) {
         Objects.requireNonNull(name, "Parameter 'name' is null!");
-        return content.getOrDefault(name, EMPTY_STRING_LIST);
+        CharSequence[] values = content.getOrDefault(name, EMPTY_STRING_LIST);
+        List<String> result = new ArrayList<>(values.length);
+        for (CharSequence chs : values) {
+            result.add(chs.toString());
+        }
+        return result;
     }
 
     @Override
     public List<String> put(String key, String... values) {
-        List<String> vs = internalListCopy(values);
-        List<String> result;
-        if (vs == null) {
+        CharSequence[] result;
+        if (values == null || values.length == 0) {
             result = content.remove(key);
         } else {
-            result = content.put(key, vs);
+            result = content.put(key, values.clone());
         }
-        return result == null ? Collections.emptyList() : result;
+        return result == null ? List.of() : toStringList(result);
     }
 
     @Override
     public List<String> put(String key, Iterable<String> values) {
         List<String> vs = internalListCopy(values);
-        List<String> result;
+        CharSequence[] result;
         if (vs == null) {
             result = content.remove(key);
         } else {
-            result = content.put(key, vs);
+            result = content.put(key, vs.toArray(new CharSequence[0]));
         }
-        return result == null ? Collections.emptyList() : result;
+        return result == null ? List.of() : toStringList(result);
     }
 
     @Override
     public List<String> putIfAbsent(String key, String... values) {
-        List<String> vls = internalListCopy(values);
-        List<String> result;
-        if (vls != null) {
-            result = content.putIfAbsent(key, vls);
-        } else {
+        CharSequence[] result;
+        if (values == null || values.length == 0) {
             result = content.get(key);
+        } else {
+            result = content.putIfAbsent(key, values.clone());
         }
-        return result == null ? Collections.emptyList() : result;
+        return result == null ? List.of() : toStringList(result);
     }
 
     @Override
     public List<String> putIfAbsent(String key, Iterable<String> values) {
         List<String> vls = internalListCopy(values);
-        List<String> result;
-        if (vls != null) {
-            result = content.putIfAbsent(key, vls);
-        } else {
+        CharSequence[] result;
+        if (vls == null) {
             result = content.get(key);
+        } else {
+            result = content.putIfAbsent(key, vls.toArray(new CharSequence[0]));
         }
-        return result == null ? Collections.emptyList() : result;
+        return result == null ? List.of() : toStringList(result);
     }
 
     @Override
     public List<String> computeIfAbsent(String key, Function<String, Iterable<String>> values) {
-        List<String> result = content.computeIfAbsent(key, k -> internalListCopy(values.apply(k)));
-        return result == null ? Collections.emptyList() : result;
+        CharSequence[] result = content.computeIfAbsent(key,
+                k -> internalListCopy(values.apply(k.toString())).toArray(new CharSequence[0])
+        );
+        return toStringList(result);
     }
 
     @Override
     public List<String> computeSingleIfAbsent(String key, Function<String, String> value) {
-        List<String> result = content.computeIfAbsent(key, k -> {
-            String v = value.apply(k);
+        CharSequence[] result = content.computeIfAbsent(key, k -> {
+            String v = value.apply(k.toString());
             if (v == null) {
                 return null;
             } else {
-                return Collections.singletonList(v);
+                return new CharSequence[] {v};
             }
         });
-        return result == null ? Collections.emptyList() : result;
+        return result == null ? List.of() : toStringList(result);
     }
 
     @Override
@@ -288,7 +292,7 @@ public class HashParameters implements Parameters {
         for (Map.Entry<String, List<String>> entry : parameters.toMap().entrySet()) {
             List<String> values = entry.getValue();
             if (values != null && !values.isEmpty()) {
-                content.put(entry.getKey(), Collections.unmodifiableList(values));
+                content.put(entry.getKey(), values.toArray(new CharSequence[0]));
             }
         }
         return this;
@@ -296,20 +300,25 @@ public class HashParameters implements Parameters {
 
     @Override
     public HashParameters add(String key, String... values) {
+        return add((CharSequence) key, values);
+    }
+
+    @Override
+    public HashParameters add(CharSequence key, CharSequence... values) {
         Objects.requireNonNull(key, "Parameter 'key' is null!");
         if (values == null || values.length == 0) {
             // do not necessarily create an entry in the map, simply immediately return
             return this;
         }
 
-        content.compute(key, (s, list) -> {
-            if (list == null) {
-                return Collections.unmodifiableList(new ArrayList<>(Arrays.asList(values)));
+        content.compute(key, (s, arr) -> {
+            if (arr == null) {
+                return values;
             } else {
-                ArrayList<String> newValues = new ArrayList<>(list.size() + values.length);
-                newValues.addAll(list);
-                newValues.addAll(Arrays.asList(values));
-                return Collections.unmodifiableList(newValues);
+                CharSequence[] result = new CharSequence[arr.length + values.length];
+                System.arraycopy(arr, 0, result, 0, arr.length);
+                System.arraycopy(values, 0, result, arr.length, values.length);
+                return result;
             }
         });
         return this;
@@ -317,24 +326,11 @@ public class HashParameters implements Parameters {
 
     @Override
     public HashParameters add(String key, Iterable<String> values) {
-        Objects.requireNonNull(key, "Parameter 'key' is null!");
-        List<String> vls = internalListCopy(values);
-        if (vls == null) {
-            // do not necessarily create an entry in the map, simply immediately return
-            return this;
-        }
-
-        content.compute(key, (s, list) -> {
-            if (list == null) {
-                return Collections.unmodifiableList(vls);
-            } else {
-                ArrayList<String> newValues = new ArrayList<>(list.size() + vls.size());
-                newValues.addAll(list);
-                newValues.addAll(vls);
-                return Collections.unmodifiableList(newValues);
-            }
-        });
-        return this;
+        return add((CharSequence) key, StreamSupport
+                .stream(values.spliterator(), false)
+                .map(CharSequence.class::cast)
+                .toArray(CharSequence[]::new)
+        );
     }
 
     @Override
@@ -344,23 +340,23 @@ public class HashParameters implements Parameters {
         }
         Map<String, List<String>> map = parameters.toMap();
         for (Map.Entry<String, List<String>> entry : map.entrySet()) {
-            add(entry.getKey(), entry.getValue());
+            add(entry.getKey(), entry.getValue().toArray(new CharSequence[0]));
         }
         return this;
     }
 
     @Override
     public List<String> remove(String key) {
-        List<String> result = content.remove(key);
-        return result == null ? Collections.emptyList() : result;
+        CharSequence[] result = content.remove(key);
+        return result == null ? Collections.emptyList() : toStringList(result);
     }
 
     @Override
     public Map<String, List<String>> toMap() {
         // deep copy
         Map<String, List<String>> result = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        for (Map.Entry<String, List<String>> entry : content.entrySet()) {
-            result.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+        for (Map.Entry<CharSequence, CharSequence[]> entry : content.entrySet()) {
+            result.put(entry.getKey().toString(), toStringList(entry.getValue()));
         }
         return result;
     }

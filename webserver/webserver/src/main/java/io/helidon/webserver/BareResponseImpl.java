@@ -16,8 +16,10 @@
 
 package io.helidon.webserver;
 
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -26,8 +28,10 @@ import java.util.concurrent.Flow;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 import io.helidon.common.http.DataChunk;
+import io.helidon.common.http.HashParameters;
 import io.helidon.common.http.Http;
 import io.helidon.common.reactive.Single;
 
@@ -89,12 +93,12 @@ class BareResponseImpl implements BareResponse {
     private volatile DefaultHttpResponse response;
 
     /**
-     * @param ctx the channel handler context
-     * @param request the request
-     * @param requestContext request context
-     * @param prevRequestChunk Future that represents previous request completion for HTTP pipelining
+     * @param ctx                   the channel handler context
+     * @param request               the request
+     * @param requestContext        request context
+     * @param prevRequestChunk      Future that represents previous request completion for HTTP pipelining
      * @param requestEntityAnalyzed connection closing listener after entity analysis
-     * @param requestId the correlation ID that is added to the log statements
+     * @param requestId             the correlation ID that is added to the log statements
      */
     BareResponseImpl(ChannelHandlerContext ctx,
                      HttpRequest request,
@@ -129,7 +133,7 @@ class BareResponseImpl implements BareResponse {
     /**
      * Steps required for the completion of this response.
      *
-     * @param self this instance
+     * @param self      this instance
      * @param throwable a throwable indicating unsuccessful completion
      */
     private void responseComplete(BareResponse self, Throwable throwable) {
@@ -151,7 +155,26 @@ class BareResponseImpl implements BareResponse {
     }
 
     @Override
-    public void writeStatusAndHeaders(Http.ResponseStatus status, Map<String, List<String>> headers) {
+    public void writeStatusAndHeaders(Http.ResponseStatus status, Map<String, List<String>> headers)
+            throws SocketClosedException, NullPointerException {
+        writeStatusAndHeadersInternal(status, headers.entrySet().stream()
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        e -> e.getValue().toArray(new CharSequence[0]))
+                )
+        );
+    }
+
+    @Override
+    public void writeStatusAndHeaders(Http.ResponseStatus status, ResponseHeaders headers) {
+        if (headers instanceof HashParameters) {
+            writeStatusAndHeadersInternal(status, ((HashParameters) headers).content());
+        } else {
+            writeStatusAndHeaders(status, headers.toMap());
+        }
+    }
+
+    private void writeStatusAndHeadersInternal(Http.ResponseStatus status, Map<CharSequence, CharSequence[]> headers) {
         Objects.requireNonNull(status, "Parameter 'statusCode' was null!");
         if (!statusHeadersSent.compareAndSet(false, true)) {
             throw new IllegalStateException("Status and headers were already sent");
@@ -166,8 +189,10 @@ class BareResponseImpl implements BareResponse {
             nettyStatus = valueOf(status.code(), status.reasonPhrase());
         }
         response = new DefaultHttpResponse(HTTP_1_1, nettyStatus);
-        for (Map.Entry<String, List<String>> headerEntry : headers.entrySet()) {
-            response.headers().add(headerEntry.getKey(), headerEntry.getValue());
+        for (Map.Entry<CharSequence, CharSequence[]> headerEntry : headers.entrySet()) {
+            for (CharSequence value : headerEntry.getValue()) {
+                response.headers().add(headerEntry.getKey(), value);
+            }
         }
 
         // Copy HTTP/2 headers to response for correlation (streamId)
@@ -211,9 +236,9 @@ class BareResponseImpl implements BareResponse {
                     response.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
                     requestEntityAnalyzed.complete(ChannelFutureListener.CLOSE);
                     throw new IllegalStateException("Cannot request entity and send response without "
-                                                            + "waiting for it to be handled");
+                            + "waiting for it to be handled");
                 }
-            } else if (!headers.containsKey(HttpHeaderNames.CONNECTION.toString())) {
+            } else if (!headers.containsKey(HttpHeaderNames.CONNECTION)) {
                 response.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
             }
         }
@@ -228,13 +253,22 @@ class BareResponseImpl implements BareResponse {
         }
     }
 
-    private boolean isWebSocketUpgrade(Http.ResponseStatus status, Map<String, List<String>> headers) {
-        return status.code() == 101 && headers.containsKey("Upgrade")
-                && headers.get("Upgrade").contains("websocket");
+    private boolean isWebSocketUpgrade(Http.ResponseStatus status, Map<CharSequence, CharSequence[]> headers) {
+        return status.code() == 101 && contains(headers, "Upgrade", "websocket");
     }
 
-    private boolean isSseEventStream(Map<String, List<String>> headers) {
-        return headers.containsKey("Content-Type") && headers.get("Content-Type").contains("text/event-stream");
+    private boolean isSseEventStream(Map<CharSequence, CharSequence[]> headers) {
+        return contains(headers, "Content-Type", "text/event-stream");
+    }
+
+    private boolean contains(Map<CharSequence, CharSequence[]> map, CharSequence key, CharSequence value) {
+        CharSequence[] arr = map.get(key);
+        if (arr != null) {
+            for (CharSequence s : arr) {
+                if (value.equals(s)) return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -551,7 +585,7 @@ class BareResponseImpl implements BareResponse {
      * Log message formatter for this class.
      *
      * @param template template suffix.
-     * @param params template suffix params.
+     * @param params   template suffix params.
      * @return string to log.
      */
     private String log(String template, Object... params) {

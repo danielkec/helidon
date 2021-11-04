@@ -282,6 +282,11 @@ public class ResponseTest {
         }
 
         @Override
+        public void writeStatusAndHeaders(Http.ResponseStatus status,
+                                          ResponseHeaders headers) throws SocketClosedException, NullPointerException {
+        }
+
+        @Override
         public Single<BareResponse> whenCompleted() {
             return Single.create(closeFuture);
         }

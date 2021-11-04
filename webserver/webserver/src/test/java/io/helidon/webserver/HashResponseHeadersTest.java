@@ -23,6 +23,8 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 import io.helidon.common.http.AlreadyCompletedException;
@@ -33,6 +35,7 @@ import io.helidon.common.reactive.Single;
 
 import org.hamcrest.collection.IsIterableContainingInOrder;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
 
 import static io.helidon.webserver.utils.TestUtils.assertException;
 import static org.hamcrest.CoreMatchers.is;
@@ -196,7 +199,7 @@ public class HashResponseHeadersTest {
         h.put(Http.Header.TRANSFER_ENCODING, "custom");
         h.httpStatus(Http.Status.NO_CONTENT_204);
         h.send().toCompletableFuture().get();
-        verify(bareResponse).writeStatusAndHeaders(any(), argThat(m -> m.containsKey("some")
+        verify(bareResponse).writeStatusAndHeaders(any(), ArgumentMatchers.<Map<String, List<String>>>argThat(m -> m.containsKey("some")
                 && !m.containsKey(Http.Header.CONTENT_TYPE)
                 && !m.containsKey(Http.Header.TRANSFER_ENCODING)));
     }
@@ -210,7 +213,7 @@ public class HashResponseHeadersTest {
         doAnswer(invocationOnMock -> {
             headersFuture.complete(result);
             return null;
-        }).when(result).writeStatusAndHeaders(any(), any());
+        }).when(result).writeStatusAndHeaders(any(), ArgumentMatchers.<Map<String, List<String>>>any());
         return result;
     }
 }

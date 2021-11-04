@@ -93,6 +93,11 @@ class UnmodifiableParameters implements Parameters {
     }
 
     @Override
+    public UnmodifiableParameters add(CharSequence key, CharSequence... values) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public UnmodifiableParameters add(String key, Iterable<String> values) {
         throw new UnsupportedOperationException();
     }

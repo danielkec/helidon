@@ -52,11 +52,15 @@ class UriComponentEncoder {
      * @return the encoded string.
      */
     public static String encode(final String s, final Type t) {
+        return encode((CharSequence) s, t).toString();
+    }
+
+    public static CharSequence encode(final CharSequence s, final Type t) {
         final boolean[] table = ENCODING_TABLES[t.ordinal()];
 
         StringBuilder sb = null;
         for (int offset = 0, codePoint; offset < s.length(); offset += Character.charCount(codePoint)) {
-            codePoint = s.codePointAt(offset);
+            codePoint = Character.codePointAt(s, offset);
 
             if (codePoint < 0x80 && table[codePoint]) {
                 if (sb != null) {

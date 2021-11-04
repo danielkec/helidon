@@ -42,6 +42,9 @@ public interface BareResponse extends Flow.Subscriber<DataChunk> {
     void writeStatusAndHeaders(Http.ResponseStatus status, Map<String, List<String>> headers)
             throws SocketClosedException, NullPointerException;
 
+    void writeStatusAndHeaders(Http.ResponseStatus status, ResponseHeaders headers)
+            throws SocketClosedException, NullPointerException;
+
     /**
      * Returns a {@link Single} of headers part of this response. The stage is completed when all headers are sent to
      * the client.

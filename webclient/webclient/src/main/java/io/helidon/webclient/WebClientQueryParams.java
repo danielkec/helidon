@@ -107,6 +107,13 @@ class WebClientQueryParams implements Parameters {
     }
 
     @Override
+    public WebClientQueryParams add(CharSequence key, CharSequence... values) {
+        rawParams.add(key, values);
+        encodedParams.add(encode(key), encodeArray(values));
+        return this;
+    }
+
+    @Override
     public WebClientQueryParams add(String key, String... values) {
         rawParams.add(key, values);
         encodedParams.add(encode(key), encodeIterable(Arrays.asList(values)));
@@ -130,6 +137,17 @@ class WebClientQueryParams implements Parameters {
         return this;
     }
 
+    private CharSequence[] encodeArray(CharSequence... arr) {
+        if (arr == null) {
+            return null;
+        }
+        CharSequence[] result = new CharSequence[arr.length];
+        for (int i = 0; i<arr.length; i++) {
+            result[i] = encode(arr[i]);
+        }
+        return result;
+    }
+
     private Iterable<String> encodeIterable(Iterable<String> iterable) {
         if (iterable == null) {
             return null;
@@ -141,8 +159,12 @@ class WebClientQueryParams implements Parameters {
         return toReturn;
     }
 
-    private String encode(String value) {
+    private CharSequence encode(CharSequence value) {
         return UriComponentEncoder.encode(value, UriComponentEncoder.Type.QUERY_PARAM);
+    }
+
+    private String encode(String value) {
+        return encode((CharSequence) value).toString();
     }
 
     @Override

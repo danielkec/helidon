@@ -251,6 +251,9 @@ public interface ResponseHeaders extends Headers {
     ResponseHeaders putAll(Parameters parameters);
 
     @Override
+    ResponseHeaders add(CharSequence key, CharSequence... values);
+
+    @Override
     ResponseHeaders add(String key, String... values);
 
     @Override

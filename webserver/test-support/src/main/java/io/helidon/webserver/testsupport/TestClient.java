@@ -41,7 +41,9 @@ import io.helidon.media.common.MediaContext;
 import io.helidon.media.common.MediaSupport;
 import io.helidon.webserver.BareRequest;
 import io.helidon.webserver.BareResponse;
+import io.helidon.webserver.ResponseHeaders;
 import io.helidon.webserver.Routing;
+import io.helidon.webserver.SocketClosedException;
 
 /**
  * Client API designed to create request directly on {@link Routing} without a network layer.
@@ -282,6 +284,12 @@ public class TestClient {
         public void writeStatusAndHeaders(Http.ResponseStatus status, Map<String, List<String>> headers) {
             headersCompletionStage.complete(this);
             responseFuture.complete(new TestResponse(status, headers, this));
+        }
+
+        @Override
+        public void writeStatusAndHeaders(Http.ResponseStatus status,
+                                          ResponseHeaders headers) throws SocketClosedException, NullPointerException {
+
         }
 
         @Override

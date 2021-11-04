@@ -125,6 +125,11 @@ public class ReadOnlyParameters implements Parameters {
     }
 
     @Override
+    public ReadOnlyParameters add(CharSequence key, CharSequence... values) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public ReadOnlyParameters add(String key, String... values) {
         throw new UnsupportedOperationException();
     }

@@ -189,6 +189,7 @@ public interface Parameters {
      * @throws UnsupportedOperationException if put operation is not supported (unmodifiable Parameters).
      */
     Parameters add(String key, String... values);
+    Parameters add(CharSequence key, CharSequence... values);
 
     /**
      * Adds specified values tu association with the specified key (optional operation).

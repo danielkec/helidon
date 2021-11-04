@@ -16,6 +16,8 @@
 
 package io.helidon.webserver;
 
+import io.netty.util.AsciiString;
+
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
@@ -321,6 +323,12 @@ class HashResponseHeaders extends HashParameters implements ResponseHeaders {
     }
 
     @Override
+    public HashResponseHeaders add(CharSequence key, CharSequence... values) {
+        completable.runIfNotCompleted(() -> super.add(key, values), COMPLETED_EXCEPTION_MESSAGE);
+        return this;
+    }
+
+    @Override
     public HashResponseHeaders add(String key, Iterable<String> values) {
         completable.runIfNotCompleted(() -> super.add(key, values), COMPLETED_EXCEPTION_MESSAGE);
         return this;
@@ -484,8 +492,8 @@ class HashResponseHeaders extends HashParameters implements ResponseHeaders {
                     state = State.COMPLETED;
                     Http.ResponseStatus status = (null == headers.httpStatus) ? Http.Status.OK_200 : headers.httpStatus;
                     status = (null == status) ?  Http.Status.OK_200 : status;
-                    Map<String, List<String>> rawHeaders = filterSpecificHeaders(headers.toMap(), status);
-                    bareResponse.writeStatusAndHeaders(status, rawHeaders);
+                    filterSpecificHeaders(headers, status);
+                    bareResponse.writeStatusAndHeaders(status, headers);
                 } finally {
                     rwLock.writeLock().unlock();
                 }
@@ -502,9 +510,9 @@ class HashResponseHeaders extends HashParameters implements ResponseHeaders {
          * @param status response status code
          * @return filtered headers
          */
-        private Map<String, List<String>> filterSpecificHeaders(Map<String, List<String>> data, Http.ResponseStatus status) {
+        private void filterSpecificHeaders(ResponseHeaders data, Http.ResponseStatus status) {
             if (data == null) {
-                return null;
+                return;
             }
             if (status.code() == Http.Status.NO_CONTENT_204.code()) {
                 data.remove(Http.Header.TRANSFER_ENCODING);
@@ -516,7 +524,6 @@ class HashResponseHeaders extends HashParameters implements ResponseHeaders {
                 data.remove(Http.Header.CONTENT_RANGE);
                 data.remove(Http.Header.CONTENT_TYPE);
             }
-            return data;
         }
     }
 }

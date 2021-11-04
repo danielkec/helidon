@@ -245,6 +245,14 @@ class WebClientRequestHeadersImpl implements WebClientRequestHeaders {
     }
 
     @Override
+    public WebClientRequestHeaders add(CharSequence key, CharSequence... values) {
+        headers.computeIfAbsent(key.toString(), k -> new ArrayList<>())
+                    .addAll(Arrays.stream(values).map(CharSequence::toString).collect(Collectors.toList())
+                );
+        return this;
+    }
+
+    @Override
     public WebClientRequestHeaders add(String key, Iterable<String> values) {
         headers.computeIfAbsent(key, k -> new ArrayList<>()).addAll(iterableToList(values));
         return this;

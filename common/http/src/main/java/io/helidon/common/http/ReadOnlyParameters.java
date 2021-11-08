@@ -91,7 +91,7 @@ public class ReadOnlyParameters implements Parameters {
 
     @Override
     public List<String> all(String name) {
-        return Optional.ofNullable(data.get(name)).orElse(Collections.emptyList());
+        return data.getOrDefault(name, List.of());
     }
 
     @Override

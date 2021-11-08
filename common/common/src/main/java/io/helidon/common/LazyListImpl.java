@@ -27,45 +27,50 @@ import java.util.stream.Collectors;
 
 class LazyListImpl<T> implements LazyList<T> {
 
-    private final List<LazyValue<T>> lazyValues = new ArrayList<>();
+    private final LazyValue<List<LazyValue<T>>> lazyValues;
     private List<T> allLoaded;
 
+    LazyListImpl(Supplier<List<LazyValue<T>>> lazyValues) {
+        this.lazyValues = LazyValue.create(lazyValues);
+    }
+
     LazyListImpl(List<LazyValue<T>> lazyValues) {
-        this.lazyValues.addAll(lazyValues);
+        List<LazyValue<T>> arrayList = new ArrayList<>(lazyValues.size());
+        this.lazyValues = LazyValue.create(arrayList);
     }
 
     @Override
     public void add(final Supplier<T> supplier) {
-        lazyValues.add(LazyValue.create(supplier));
+        lazyValues.get().add(LazyValue.create(supplier));
     }
 
     private List<T> loadAll() {
         if (allLoaded == null) {
-            allLoaded = lazyValues.stream().map(LazyValue::get).collect(Collectors.toList());
+            allLoaded = lazyValues.get().stream().map(LazyValue::get).collect(Collectors.toList());
         }
         return allLoaded;
     }
 
     @Override
     public int size() {
-        return lazyValues.size();
+        return lazyValues.get().size();
     }
 
     @Override
     public boolean isEmpty() {
-        return lazyValues.isEmpty();
+        return lazyValues.get().isEmpty();
     }
 
     @Override
     public boolean contains(final Object o) {
-        return lazyValues.stream()
+        return lazyValues.get().stream()
                 .map(LazyValue::get)
                 .anyMatch(tLazyValue -> Objects.equals(o, tLazyValue));
     }
 
     @Override
     public Iterator<T> iterator() {
-        Iterator<LazyValue<T>> lazyValueIterator = lazyValues.iterator();
+        Iterator<LazyValue<T>> lazyValueIterator = lazyValues.get().iterator();
         return new Iterator<T>() {
             @Override
             public boolean hasNext() {
@@ -91,12 +96,12 @@ class LazyListImpl<T> implements LazyList<T> {
 
     @Override
     public boolean add(final T t) {
-        return lazyValues.add(LazyValue.create(t));
+        return lazyValues.get().add(LazyValue.create(t));
     }
 
     @Override
     public boolean remove(final Object o) {
-        return lazyValues.removeIf(lv -> Objects.equals(o, lv.get()));
+        return lazyValues.get().removeIf(lv -> Objects.equals(o, lv.get()));
     }
 
     @Override
@@ -106,7 +111,7 @@ class LazyListImpl<T> implements LazyList<T> {
 
     @Override
     public boolean addAll(final Collection<? extends T> c) {
-        c.forEach(v -> lazyValues.add(LazyValue.create(v)));
+        c.forEach(v -> lazyValues.get().add(LazyValue.create(v)));
         return !c.isEmpty();
     }
 
@@ -128,7 +133,7 @@ class LazyListImpl<T> implements LazyList<T> {
 
     @Override
     public void clear() {
-        lazyValues.clear();
+        lazyValues.get().clear();
         if (allLoaded != null) {
             allLoaded.clear();
         }
@@ -136,28 +141,28 @@ class LazyListImpl<T> implements LazyList<T> {
 
     @Override
     public T get(final int index) {
-        return lazyValues.get(index).get();
+        return lazyValues.get().get(index).get();
     }
 
     @Override
     public T set(final int index, final T element) {
-        return lazyValues.set(index, LazyValue.create(element)).get();
+        return lazyValues.get().set(index, LazyValue.create(element)).get();
     }
 
     @Override
     public void add(final int index, final T element) {
-        lazyValues.add(index, LazyValue.create(element));
+        lazyValues.get().add(index, LazyValue.create(element));
     }
 
     @Override
     public T remove(final int index) {
-        return lazyValues.remove(index).get();
+        return lazyValues.get().remove(index).get();
     }
 
     @Override
     public int indexOf(final Object o) {
-        for (int i = 0; i < lazyValues.size(); i++) {
-            LazyValue<T> lv = lazyValues.get(i);
+        for (int i = 0; i < lazyValues.get().size(); i++) {
+            LazyValue<T> lv = lazyValues.get().get(i);
             if (Objects.equals(o, lv.get())) {
                 return i;
             }
@@ -168,8 +173,8 @@ class LazyListImpl<T> implements LazyList<T> {
     @Override
     public int lastIndexOf(final Object o) {
         int index = -1;
-        for (int i = 0; i < lazyValues.size(); i++) {
-            LazyValue<T> lv = lazyValues.get(i);
+        for (int i = 0; i < lazyValues.get().size(); i++) {
+            LazyValue<T> lv = lazyValues.get().get(i);
             if (Objects.equals(o, lv.get())) {
                 index = i;
             }
@@ -179,17 +184,17 @@ class LazyListImpl<T> implements LazyList<T> {
 
     @Override
     public ListIterator<T> listIterator() {
-        return new LazyListIterator<>(lazyValues.listIterator());
+        return new LazyListIterator<>(lazyValues.get().listIterator());
     }
 
     @Override
     public ListIterator<T> listIterator(final int index) {
-        return new LazyListIterator<>(lazyValues.listIterator(index));
+        return new LazyListIterator<>(lazyValues.get().listIterator(index));
     }
 
     @Override
     public List<T> subList(final int fromIndex, final int toIndex) {
-        return new LazyListImpl<>(lazyValues.subList(fromIndex, toIndex));
+        return new LazyListImpl<>(lazyValues.get().subList(fromIndex, toIndex));
     }
 
     private static class LazyListIterator<T> implements ListIterator<T> {

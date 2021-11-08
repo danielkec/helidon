@@ -43,4 +43,7 @@ public interface LazyList<T> extends List<T> {
     static <T> LazyList<T> create(List<LazyValue<T>> lazyValues) {
         return new LazyListImpl<>(lazyValues);
     }
+    static <T> LazyList<T> create(Supplier<List<LazyValue<T>>> lazyValues) {
+        return new LazyListImpl<>(lazyValues);
+    }
 }

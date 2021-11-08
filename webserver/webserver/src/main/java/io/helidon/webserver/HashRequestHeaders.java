@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import io.helidon.common.LazyList;
@@ -110,6 +111,9 @@ class HashRequestHeaders extends ReadOnlyParameters implements RequestHeaders {
         return lCookies;
     }
 
+    //TODO: Memory leak, figure out overflow of the most useless cache items
+    private static final Map<String, List<String>> tokenize_cache = new ConcurrentHashMap<>();
+
     @Override
     public List<MediaType> acceptedTypes() {
         List<MediaType> result = this.acceptedtypesCache;
@@ -120,8 +124,8 @@ class HashRequestHeaders extends ReadOnlyParameters implements RequestHeaders {
                 result = HUC_ACCEPT_DEFAULT_TYPES;
 
             } else {
-                result = LazyList.create(acceptValues.stream()
-                        .flatMap(h -> Utils.tokenize(',', "\"", false, h).stream())
+                result = LazyList.create(() -> acceptValues.stream()
+                        .flatMap(h -> tokenize_cache.computeIfAbsent(h, v -> Utils.tokenize(',', "\"", false, v)).stream())
                         .map(String::trim)
                         .map(s -> LazyValue.create(() -> MediaType.parse(s)))
                         .collect(Collectors.toList()));
